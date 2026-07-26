@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "kiran-scroll-world"
+version = "0.1.2"
+description = "Cursor plugin: scroll-scrub fly-through — Kie gpt-image-2 panels + Seedance 2 Mini video legs + DOM overlays"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.10"
+authors = [{ name = "Nikita Kulikov", email = "" }]
+keywords = ["cursor", "scroll-scrub", "kie-ai", "gpt-image-2", "seedance", "landing-page"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+]
+dependencies = [
+  "requests>=2.31.0",
+  "python-dotenv>=1.0.0",
+  "Pillow>=10.0.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0"]
+
+[tool.pytest.ini_options]
+pythonpath = ["scripts"]
+testpaths = ["tests"]

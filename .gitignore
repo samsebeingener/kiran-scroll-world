@@ -1,0 +1,17 @@
+.env
+.env.local
+*.mp4
+*.webm
+*.png
+*.jpg
+*.jpeg
+*.webp
+!docs/**
+projects/
+docs/revision/
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+.DS_Store
+node_modules/

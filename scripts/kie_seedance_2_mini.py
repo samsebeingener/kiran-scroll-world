@@ -1,0 +1,358 @@
+#!/usr/bin/env python3
+"""Create bytedance/seedance-2-mini leg from first_frame_url + last_frame_url.
+
+Frame chain (default):
+  leg 0 — start: storyboard frame 1, end: storyboard frame 2
+  leg i>0 — start: last frame of active leg i-1 MP4, end: storyboard frame i+2
+
+Docs: https://docs.kie.ai/market/bytedance/seedance-2-mini
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import re
+from pathlib import Path
+from typing import Any
+
+from kie_common import KieTaskClient
+from kie_file_upload import KieFileUploadClient
+from media_format import resolve_cell_aspect
+from video_frame_chain import resolve_leg_frame_paths, save_leg_last_frame
+
+MODEL = "bytedance/seedance-2-mini"
+SUPPORTED_ASPECT = frozenset({"1:1", "4:3", "3:4", "16:9", "9:16", "21:9", "adaptive"})
+SUPPORTED_RESOLUTION = frozenset({"480p", "720p"})
+DURATION_MIN = 4
+DURATION_MAX = 8
+DEFAULT_DURATION = 4
+DEFAULT_RESOLUTION = "480p"
+
+FORBIDDEN_URL_MARKERS = ("example.com", "localhost", "127.0.0.1", "placeholder")
+MIN_PROMPT_CHARS = 800
+MAX_PROMPT_CHARS = 20000
+RECOMMENDED_PROMPT_CHARS = 1200
+FORBIDDEN_PROMPT_SUBSTRINGS = (
+    "frame sources",
+    "previous leg",
+    "next leg",
+    "storyboard slice",
+    "intermediate storyboard",
+    "preserve rendered",
+    "rendered end",
+    "previous generation",
+    "previous video",
+    "snap-back",
+    "snap back to storyboard",
+    "momentum from previous",
+    "continue the velocity",
+    "continue momentum",
+    "active_map",
+    "ffmpeg",
+    "@image1",
+    "@image2",
+)
+FORBIDDEN_PROMPT_PATTERNS = (
+    r"\bstoryboard\b",
+    r"\bmp4\b",
+    r"\bleg\s*\d+\b",
+)
+
+
+def _resolve_project_path(project: Path, path: Path) -> Path:
+    return path if path.is_absolute() else (project / path)
+
+
+def load_project_meta(project: Path) -> dict[str, Any]:
+    meta_path = project / "project.meta.json"
+    if not meta_path.is_file():
+        return {}
+    try:
+        return json.loads(meta_path.read_text(encoding="utf-8-sig"))
+    except json.JSONDecodeError:
+        return {}
+
+
+def resolve_resolution(cli_value: str | None, meta: dict[str, Any]) -> str:
+    raw = (cli_value or meta.get("video_resolution") or DEFAULT_RESOLUTION).strip().lower()
+    if raw in {"480", "480p"}:
+        return "480p"
+    if raw in {"720", "720p"}:
+        return "720p"
+    raise SystemExit(
+        f"Unsupported resolution {raw!r}. Use 480p (default) or 720p."
+    )
+
+
+def resolve_duration(cli_value: int | None, meta: dict[str, Any]) -> int:
+    if cli_value is not None:
+        duration = int(cli_value)
+    else:
+        hint = meta.get("video_duration")
+        duration = int(hint) if hint is not None else DEFAULT_DURATION
+    if duration < DURATION_MIN or duration > DURATION_MAX:
+        raise SystemExit(
+            f"duration must be {DURATION_MIN}–{DURATION_MAX} (got {duration}). "
+            f"Default: {DEFAULT_DURATION}s."
+        )
+    return duration
+
+
+def validate_local_leg_inputs(*, start_path: Path, end_path: Path, prompt: str) -> None:
+    if not start_path.is_file():
+        raise SystemExit(f"Missing start frame: {start_path}")
+    if not end_path.is_file():
+        raise SystemExit(f"Missing end frame: {end_path}")
+
+    prompt_stripped = prompt.strip()
+    plen = len(prompt_stripped)
+    if plen < MIN_PROMPT_CHARS:
+        raise SystemExit(
+            f"Prompt too short ({plen} chars, min {MIN_PROMPT_CHARS}). "
+            "Expand per templates/video-leg-prompt.template.md — timed camera beats, "
+            "first/last frame descriptions, object transforms (target 1200–4000 chars)."
+        )
+    if plen > MAX_PROMPT_CHARS:
+        raise SystemExit(
+            f"Prompt too long ({plen} chars, Kie max {MAX_PROMPT_CHARS}). Trim redundant lines."
+        )
+    if plen < RECOMMENDED_PROMPT_CHARS:
+        print(
+            f"WARN: prompt {plen} chars < recommended {RECOMMENDED_PROMPT_CHARS} — "
+            "consider richer camera/object detail for Seedance 2 Mini.",
+            flush=True,
+        )
+    if prompt_stripped.lower() in {"test", "testing", "prompt"}:
+        raise SystemExit("Refusing placeholder prompt 'test'. Use 05-image-prompts/*-leg-*.md.")
+    if "@image1" in prompt_stripped or "@image2" in prompt_stripped:
+        raise SystemExit(
+            "Prompt still uses @image1/@image2. Replace with 'first frame' / 'last frame' "
+            "(see templates/video-leg-prompt.template.md)."
+        )
+    lower = prompt_stripped.lower()
+    for phrase in FORBIDDEN_PROMPT_SUBSTRINGS:
+        if phrase in lower:
+            raise SystemExit(
+                f"Prompt contains pipeline meta Kie cannot use: {phrase!r}. "
+                "Describe only motion between the two uploaded PNGs. "
+                "See shared/kie-prompt-contract.md"
+            )
+    for pattern in FORBIDDEN_PROMPT_PATTERNS:
+        if re.search(pattern, lower):
+            raise SystemExit(
+                f"Prompt matches forbidden pattern {pattern!r} (pipeline meta). "
+                "See shared/kie-prompt-contract.md"
+            )
+
+
+def validate_frame_urls(*, first_frame_url: str, last_frame_url: str) -> None:
+    for label, url in (("first_frame_url", first_frame_url), ("last_frame_url", last_frame_url)):
+        lower = url.lower()
+        if not lower.startswith("https://"):
+            raise SystemExit(f"{label} must be HTTPS Kie upload URL, got: {url!r}")
+        if any(marker in lower for marker in FORBIDDEN_URL_MARKERS):
+            raise SystemExit(f"{label} looks like a placeholder URL: {url!r}")
+
+
+class Seedance2MiniClient(KieTaskClient):
+    def create_leg(
+        self,
+        *,
+        first_frame_url: str,
+        last_frame_url: str,
+        prompt: str,
+        aspect_ratio: str = "16:9",
+        resolution: str = "480p",
+        duration: int = DEFAULT_DURATION,
+        generate_audio: bool = False,
+        nsfw_checker: bool = False,
+        callback_url: str | None = None,
+    ) -> str:
+        if aspect_ratio not in SUPPORTED_ASPECT:
+            raise ValueError(f"Unsupported aspect_ratio {aspect_ratio!r}")
+        if resolution not in SUPPORTED_RESOLUTION:
+            raise ValueError(f"Unsupported resolution {resolution!r}; use 480p or 720p")
+        if duration < DURATION_MIN or duration > DURATION_MAX:
+            raise ValueError(f"duration must be {DURATION_MIN}–{DURATION_MAX}")
+
+        payload: dict[str, Any] = {
+            "model": MODEL,
+            "input": {
+                "prompt": prompt,
+                "first_frame_url": first_frame_url,
+                "last_frame_url": last_frame_url,
+                "resolution": resolution,
+                "aspect_ratio": aspect_ratio,
+                "duration": duration,
+                "generate_audio": generate_audio,
+                "nsfw_checker": nsfw_checker,
+            },
+        }
+        if callback_url:
+            payload["callBackUrl"] = callback_url
+        return self.create_task_raw(payload)
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(
+        description="Seedance 2.0 Mini leg with video chain (prev leg last frame → storyboard end)"
+    )
+    parser.add_argument("--project", required=True, type=Path)
+    parser.add_argument("--leg", type=int, required=True, help="0-based leg index")
+    parser.add_argument(
+        "--start",
+        type=Path,
+        default=None,
+        help="Override first frame (default: storyboard #1 or last frame of leg-1)",
+    )
+    parser.add_argument(
+        "--end",
+        type=Path,
+        default=None,
+        help="Override last frame (default: storyboard frame leg+2 from active_map)",
+    )
+    parser.add_argument("--prompt-file", type=Path, required=True)
+    parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--aspect-ratio", default=None)
+    parser.add_argument("--resolution", default=None)
+    parser.add_argument("--duration", type=int, default=None)
+    parser.add_argument("--force", action="store_true")
+    parser.add_argument("--generate-audio", action="store_true")
+    parser.add_argument("--workspace", type=Path, default=None)
+    parser.add_argument("--version", type=int, default=None)
+    args = parser.parse_args()
+
+    from asset_versions import format_version, next_version, register_leg
+
+    project = args.project.resolve()
+    workspace = args.workspace or project
+    meta = load_project_meta(project)
+    resolution = resolve_resolution(args.resolution, meta)
+    duration = resolve_duration(args.duration, meta)
+    aspect_ratio = resolve_cell_aspect(args.aspect_ratio, meta)
+    if aspect_ratio not in SUPPORTED_ASPECT:
+        raise SystemExit(f"Unsupported aspect_ratio {aspect_ratio!r} for Seedance")
+
+    insert = meta.get("insert_placement") or meta.get("insert_place")
+    if not insert and not args.force and not args.dry_run:
+        raise SystemExit(
+            "insert_placement not set in project.meta.json. Ask user (RU), write to meta, "
+            "or pass --force after confirmation."
+        )
+    if not insert and args.dry_run:
+        print("WARN: insert_placement not set — dry-run only.", flush=True)
+
+    prompt_path = _resolve_project_path(project, args.prompt_file)
+    if not prompt_path.is_file():
+        raise SystemExit(f"Missing --prompt-file: {prompt_path}")
+    prompt = prompt_path.read_text(encoding="utf-8").strip()
+    if not prompt:
+        raise SystemExit(f"Empty prompt file: {prompt_path}")
+
+    start_override = _resolve_project_path(project, args.start) if args.start else None
+    end_override = _resolve_project_path(project, args.end) if args.end else None
+    start_path, end_path, chain_meta = resolve_leg_frame_paths(
+        project,
+        args.leg,
+        start_override=start_override,
+        end_override=end_override,
+    )
+    validate_local_leg_inputs(start_path=start_path, end_path=end_path, prompt=prompt)
+
+    summary: dict[str, Any] = {
+        "model": MODEL,
+        "leg": args.leg,
+        "chain": chain_meta,
+        "start_file": str(start_path).replace("\\", "/"),
+        "end_file": str(end_path).replace("\\", "/"),
+        "prompt_file": str(prompt_path),
+        "prompt_chars": len(prompt),
+        "prompt_preview": prompt[:160] + ("…" if len(prompt) > 160 else ""),
+        "aspect_ratio": aspect_ratio,
+        "resolution": resolution,
+        "duration": duration,
+        "generate_audio": bool(args.generate_audio),
+        "insert_placement": insert,
+    }
+
+    if args.dry_run:
+        summary["first_frame_url"] = "(skipped — dry-run)"
+        summary["last_frame_url"] = "(skipped — dry-run)"
+        print(json.dumps(summary, ensure_ascii=False, indent=2))
+        print("dry-run: skipped Kie upload + createTask")
+        return
+
+    uploader = KieFileUploadClient(workspace=workspace)
+    first_frame_url = uploader.upload_stream(
+        start_path, upload_path=f"scroll-world/{project.name}", file_name=start_path.name
+    )["publicUrl"]
+    last_frame_url = uploader.upload_stream(
+        end_path, upload_path=f"scroll-world/{project.name}", file_name=end_path.name
+    )["publicUrl"]
+    validate_frame_urls(first_frame_url=first_frame_url, last_frame_url=last_frame_url)
+    summary["first_frame_url"] = first_frame_url
+    summary["last_frame_url"] = last_frame_url
+    print(json.dumps(summary, ensure_ascii=False, indent=2))
+
+    client = Seedance2MiniClient(workspace=workspace)
+    print(f"createTask {MODEL} leg={args.leg} resolution={resolution} duration={duration}")
+    task_id = client.create_leg(
+        first_frame_url=first_frame_url,
+        last_frame_url=last_frame_url,
+        prompt=prompt,
+        aspect_ratio=aspect_ratio,
+        resolution=resolution,
+        duration=duration,
+        generate_audio=bool(args.generate_audio),
+    )
+    print(f"taskId={task_id}")
+    data = client.wait_for_task(task_id)
+    urls = client.extract_result_urls(data)
+    if not urls:
+        raise SystemExit(f"No resultUrls: {data}")
+
+    legs_dir = project / "assets" / "video" / "legs"
+    legs_dir.mkdir(parents=True, exist_ok=True)
+    ver = args.version or next_version(legs_dir, f"*-leg-{args.leg:02d}.mp4")
+    ver_s = format_version(ver)
+    out = legs_dir / f"{ver_s}-leg-{args.leg:02d}.mp4"
+    client.download(urls[0], out)
+    print(out)
+
+    last_png = save_leg_last_frame(project, out, args.leg)
+    print(f"last_frame_cache={last_png}")
+
+    rel = str(out.relative_to(project)).replace("\\", "/")
+    register_leg(project, args.leg, ver, rel, set_active=True)
+
+    log_path = legs_dir / f"{ver_s}-leg-{args.leg:02d}.json"
+    log_path.write_text(
+        json.dumps(
+            {
+                "model": MODEL,
+                "taskId": task_id,
+                "version": ver_s,
+                "leg": args.leg,
+                "chain": chain_meta,
+                "start_file": str(start_path).replace("\\", "/"),
+                "end_file": str(end_path).replace("\\", "/"),
+                "last_frame_cache": str(last_png).replace("\\", "/"),
+                "first_frame_url": first_frame_url,
+                "last_frame_url": last_frame_url,
+                "resolution": resolution,
+                "aspect_ratio": aspect_ratio,
+                "duration": duration,
+                "result_url": urls[0],
+                "local": rel,
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+
+if __name__ == "__main__":
+    main()

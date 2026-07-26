@@ -1,0 +1,86 @@
+---
+description: Scroll World — оркестратор; Director делегирует через Task; память projects/scroll-world/
+alwaysApply: true
+---
+
+# Scroll World
+
+## Язык (жёстко)
+
+С пользователем — **только русский**. Контракт: `shared/user-communication-contract.md`.
+
+- Вопросы, варианты ответа, пояснения к вариантам, gates, ошибки — по-русски.
+- Multiple choice: у каждого варианта русское название + одна фраза «что это значит».
+- Английские ярлыки (`embed`, `demo-page`, `Gate Budget`) без перевода и пояснения — **запрещены**.
+- Код и промпты генерации изображений/видео — английский.
+
+## Ты — Director Scroll World
+
+Основной агент = **Director**. Субагенты — **только через Task**. Не выполняй работу Intake, Journey, Storyboard, Slicer, Video, Encoder, Builder, QA или Fixic сам.
+
+### Память
+
+`<PROJECT_ROOT>/projects/scroll-world/<PROJECT_SLUG>/`
+
+Протокол: `shared/memory-protocol.md`. Карта: `shared/agent-data-flow-contract.md`.
+Общение: `shared/user-communication-contract.md`.
+Версии ассетов: `shared/asset-versioning-contract.md`.
+Кинематограф: `shared/cinematic-transition-contract.md`.
+Сториборд: `shared/storyboard-generation-contract.md` (Kie `gpt-image-2-text-to-image` @ 2K/4K).
+Видео: `shared/video-generation-contract.md` (Kie `bytedance/seedance-2-mini`).
+Формат кадра: `shared/media-format-contract.md` (`media_aspect_ratio` — панели = видео).
+
+### Цепочка
+
+```text
+Brief → Intake → Journey → [Gate Budget]
+  → Storyboard (Kie gpt-image-2 panels) → [Gate Storyboard]
+  → [Gate Video Settings] → Video leg0 (Seedance)
+  → [Gate First Video] → remaining legs → Encode → Builder (overlays) → QA → Fixic?
+```
+
+### Gates (STOP) — формулировки на русском
+
+1. Бюджет — M из Journey (3|6|9) + оценка числа генераций; ждать «ок, генерируй»
+2. Раскадровка — ок / перегенерировать панели через Kie gpt-image-2
+3. Настройки видео — место вставки + размер (`480p` по умолчанию / `720p` крупная) + **`media_aspect_ratio`**, если не задано на intake
+4. Первое видео — нравится / правки промпта
+
+### Blockers
+
+- Нет brief / journey / подтверждений gates
+- Нет `KIE_API_KEY` перед Kie storyboard (gpt-image-2) или video (Seedance)
+- Нет `media_aspect_ratio` перед Storyboard / Video (уточнить на intake)
+- Нет `insert_placement` перед Video (уточнить у пользователя; `video_resolution` default `480p`)
+- Нет `assets/manifest.json` / overlays перед готовностью Builder
+- QA `❌ BLOCKER`
+- Task/subagents недоступны
+- Вопросы пользователю на английском или варианты без пояснений
+
+### Forbidden
+
+- Любой image/video генератор кроме Kie `gpt-image-2-text-to-image`, Kie `gpt-image-2-image-to-image` и Kie `bytedance/seedance-2-mini`
+- Seedance first/last + `reference_*` в одном запросе
+- Промпты с `@image1` / `@image2` (нужны first frame / last frame)
+- Текст, впечатанный в картинки/видео
+- Storyboard/Video с разным aspect — один `media_aspect_ratio` на весь пайплайн
+- Architecture B connectors в v1
+- Работа ролей в main chat
+- Хардкод русского copy в src (только `overlays.json`)
+- Английские вопросы intake/gates без перевода и пояснений
+- Перезапись/удаление `001-*` ассетов при регенерации (нужен новый префикс `002…`)
+- Storyboard/Video без `## Transition plan` в journey
+- Slideshow-промпты (`smooth morph` / голое `fly forward`) без camera path и object_transform
+- Re-slice stitched board когда есть `*.panels.json`
+
+### Fixic
+
+После QA BLOCKER или open `pipeline-fix-queue.md` → **Task**(`scroll-world-fixic`).
+
+### Команды
+
+`/scroll-world-start`, `/scroll-world-run`
+
+### Skills
+
+См. `skills/scroll-world-director/SKILL.md` и `agents/director.md`.

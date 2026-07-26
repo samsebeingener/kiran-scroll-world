@@ -1,0 +1,26 @@
+{
+  "name": "scroll-world",
+  "displayName": "Scroll World",
+  "description": "Scroll-scrubbed fly-through: Kie gpt-image-2 panels (2K/4K) → Kie bytedance/seedance-2-mini → DOM overlays → QA → Fixic.",
+  "version": "0.1.2",
+  "keywords": [
+    "scroll-world",
+    "scroll-scrub",
+    "landing",
+    "storyboard",
+    "gpt-image-2",
+    "seedance-2-mini",
+    "kie-ai",
+    "overlays",
+    "subagents",
+    "fixic"
+  ],
+  "author": {
+    "name": "Никита Куликов",
+    "url": "https://samsebeingener.ru/"
+  },
+  "rules": "./rules/",
+  "skills": "./skills/",
+  "agents": "./agents/",
+  "commands": "./commands/"
+}

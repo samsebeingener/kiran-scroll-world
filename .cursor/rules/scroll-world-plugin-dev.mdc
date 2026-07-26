@@ -1,0 +1,10 @@
+---
+description: Dev notes when editing this plugin source
+globs:
+alwaysApply: false
+---
+
+# scroll-world plugin source
+
+After changes run `scripts/sync-to-cursor.ps1` and Reload Window.
+Do not put secrets in git. Runtime projects live in host `projects/scroll-world/`.
