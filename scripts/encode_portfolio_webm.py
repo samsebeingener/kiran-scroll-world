@@ -49,7 +49,7 @@ def encode_webm(src: Path, dest: Path, *, crf: int) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--project", required=True, type=Path)
-    parser.add_argument("--crf", type=int, default=38, help="VP9 CRF (higher = smaller, default 38)")
+    parser.add_argument("--crf", type=int, default=32, help="VP9 CRF (higher = smaller, default 32)")
     args = parser.parse_args()
 
     project = args.project.resolve()

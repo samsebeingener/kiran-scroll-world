@@ -35,6 +35,7 @@ python scripts/build_scrub_media.py --project <proj> --refresh
 | Poster source | Extract `*-first.png` / `*-last.png` from **encoded MP4** (same crop as scrub), not raw Kie MP4 unless encoded missing |
 | Playback clip | Prefer `assets/encoded/*.webm` in `scrub-media.json` when present (portfolio deploy); MP4 fallback OK for local dev |
 | Dimension match | Boundary PNGs must match encoded scrub dimensions (e.g. 854×480 for 480p 16:9) — re-run `--refresh` after re-encode |
+| Portfolio WebM quality | VP9 **CRF 32** is the fixed production default; CRF 38 is not permitted without explicit A/B acceptance |
 
 ### Mandatory ±5-frame compatibility check
 

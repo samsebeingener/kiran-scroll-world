@@ -52,6 +52,16 @@ python scripts/check_seam_compatibility.py --project <proj> --window 5
 
 **One section per leg** — scrub from leg 0 `t=0` through the final leg's last frame. No still-only intro/outro bookends. See `shared/scrub-still-contract.md`.
 
+For portfolio deployment, WebM is encoded with **VP9 CRF 32**:
+
+```bash
+python scripts/encode_portfolio_webm.py --project <proj>
+```
+
+CRF 32 is the fixed quality/size default. Do not silently use CRF 38 or
+lower-quality values for production; changing it requires an explicit A/B test
+and a documented decision.
+
 `check_seam_compatibility.py` is a mandatory gate after every encode. It compares
 `last[5] × first[5]` for every adjacent pair, writes
 `assets/seam-compatibility.json` and `assets/seam-compatibility.md`, and records
