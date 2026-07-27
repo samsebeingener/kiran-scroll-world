@@ -1,6 +1,6 @@
 # Публикация на GitHub
 
-Репозиторий: **https://github.com/mashajetruj-sketch/kiran-scroll-world**
+Репозиторий: **https://github.com/samsebeingener/kiran-scroll-world**
 
 ## Перед push
 
@@ -20,14 +20,14 @@ git add .
 git status   # проверьте список файлов
 git commit -m "Initial public release: Kiran Scroll World Cursor plugin v0.1.2"
 git branch -M main
-git remote add origin https://github.com/mashajetruj-sketch/kiran-scroll-world.git
+git remote add origin https://github.com/samsebeingener/kiran-scroll-world.git
 git push -u origin main
 ```
 
 Если remote уже есть с другим URL:
 
 ```powershell
-git remote set-url origin https://github.com/mashajetruj-sketch/kiran-scroll-world.git
+git remote set-url origin https://github.com/samsebeingener/kiran-scroll-world.git
 git push -u origin main
 ```
 

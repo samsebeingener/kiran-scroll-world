@@ -23,7 +23,7 @@ Image + video generation: **Kie only** (`gpt-image-2-text-to-image` production; 
 ### 1. Установка
 
 ```powershell
-git clone https://github.com/mashajetruj-sketch/kiran-scroll-world.git
+git clone https://github.com/samsebeingener/kiran-scroll-world.git
 cd kiran-scroll-world
 pip install -e ".[dev]"
 copy .env.example .env   # KIE_API_KEY
