@@ -25,20 +25,20 @@ If `*.panels.json` exists — use panel PNGs as-is (`active_map`). Do **not** re
 
 ## 3. Video legs (Seedance 2.0 Mini + chain)
 
-Перед генерацией: `insert_placement` в meta; `video_resolution` default **480p**; `video_duration` default **4** (4–8).
+Перед генерацией: `insert_placement` в meta; `video_resolution` default **480p**; длительность обязательна — per-leg `duration_sec` из journey / `video_durations` (диапазон **4–15**, дефолта нет; если не задана нигде — ошибка конфигурации).
 
-**Цепочка:** leg 0 start/end из storyboard panels; leg `i>0` start = last frame предыдущего MP4, end = storyboard.
+**Цепочка:** legs = **K − 1** (`playback_chain` prefix `[1..K]`; omit → K=M). Leg 0 start/end из storyboard panels по chain; leg `i>0` start = last frame предыдущего MP4, end = storyboard `playback_chain[i+1]`.
 
 ```bash
 python scripts/kie_seedance_2_mini.py \
   --workspace <ROOT> --project <proj> --leg 0 \
   --prompt-file 05-image-prompts/001-leg-00.md \
-  --resolution 480p --duration 4
+  --resolution 480p --duration 5
 
 python scripts/kie_seedance_2_mini.py \
   --workspace <ROOT> --project <proj> --leg 1 \
   --prompt-file 05-image-prompts/001-leg-01.md \
-  --resolution 480p --duration 4
+  --resolution 480p --duration 5
 ```
 
 ## 4. Encode + scrub media

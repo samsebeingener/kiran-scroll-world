@@ -4,14 +4,16 @@
 
 **Kiran Scroll World** — project-local [Cursor](https://cursor.com) plugin для **scroll-scrubbed fly-through** лендинга: пока гость скроллит, камера летит сквозь единый мини-мир бренда без склеек «из ниоткуда».
 
-> Один мир. M ключевых кадров. M−1 кинематографичных перехода. Русский текст — поверх видео, не в генерации.
+> Один мир. M ключевых кадров. K−1 кинематографичных перехода по `playback_chain` (по умолчанию K=M). Русский текст — поверх видео, не в генерации.
 
 ## Возможности
 
 - **Сессионный intake** — `/scroll-world-start`: тема мира, бренд, стиль, формат кадра (`media_aspect_ratio`), куда встроить блок
 - **Journey + Transition plan** — единый мир, типы переходов между кадрами, русские overlay-тексты
 - **Storyboard** — **M ∈ {3, 6, 9}** (выбор на Journey под задачу) панелей через Kie `gpt-image-2-text-to-image` @ **2K** / **4K**; каждая панель = точный `media_aspect_ratio` (не aspect сшитого board)
-- **Video legs** — Kie `bytedance/seedance-2-mini` (`first_frame_url` + `last_frame_url`), default **480p**, duration **4** (диапазон 4–8)
+- **Video legs** — Kie `bytedance/seedance-2-mini` (`first_frame_url` + `last_frame_url`), default **480p**; длительность каждого leg **4–15 с** — режиссёрское решение в journey (дефолта нет)
+- **Seam gate** — `check_seam_compatibility.py` после encode: MAE между соседними legs, BLOCKER при плохих швах
+- **Kie resilience** — retry с re-submit при транзиентных ошибках API (429/5xx/501), пауза 5 с между попытками
 - **DOM overlays** — русский copy в `assets/overlays.json` (можно править без регенерации медиа)
 - **scrub-engine.js** — portable scroll-scrub (upstream [oso95/scroll-world](https://github.com/oso95/scroll-world), MIT)
 - **Fixic** — post-run исправления по `pipeline-fix-queue.md`
@@ -62,19 +64,19 @@ copy .env.example .env   # KIE_API_KEY
 ```text
 /scroll-world-start (Director)
   → Intake (media_aspect_ratio, brand)
-  → Journey (+ Transition plan)
-  → [Gate Budget]
+  → Journey (+ Transition plan + 04-journey-pitch.md)
+  → [Gate Pitch — plain Russian approve]
   → Storyboard (Kie gpt-image-2 panels)
   → [Gate Storyboard]
   → [Gate Video Settings]
   → Video legs (Seedance 2 Mini, chain 0→1→…)
-  → Encode → Builder (overlays + scrub-engine)
+  → Encode → Seam check → Builder (overlays + scrub-engine)
   → QA → [Fixic]
 ```
 
-Видео-отрезков = **M − 1** (M кадров).
+Видео-отрезков = **K − 1** (`playback_chain` prefix; по умолчанию K = M).
 
-Контракты: `shared/media-format-contract.md`, `shared/video-generation-contract.md`, `shared/storyboard-generation-contract.md`.
+Контракты: `shared/media-format-contract.md`, `shared/video-generation-contract.md`, `shared/storyboard-generation-contract.md`, `shared/seam-playback-contract.md`, реестры `shared/camera-movement-registry.md` и `shared/object-transform-registry.md`.
 
 ## Приватность
 
@@ -97,8 +99,3 @@ MIT — см. [LICENSE](LICENSE). Upstream scrub-engine: MIT (oso95/scroll-world
 
 Проект разработал [Никита Куликов](https://samsebeingener.ru/).
 
----
-
-**GitHub About (краткое описание):**
-
-> Cursor plugin: scroll-scrub fly-through — Kie gpt-image-2 storyboard panels + Seedance 2 Mini video legs + DOM overlays. By Nikita Kulikov.

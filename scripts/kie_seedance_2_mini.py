@@ -5,6 +5,9 @@ Frame chain (default):
   leg 0 — start: storyboard frame 1, end: storyboard frame 2
   leg i>0 — start: last frame of active leg i-1 MP4, end: storyboard frame i+2
 
+With project.meta.json playback_chain=[1..K]: leg i connects chain[i]→chain[i+1]
+(max leg = K-2). Duration: CLI > video_durations[leg] > video_duration > 5 (range 4–10).
+
 Docs: https://docs.kie.ai/market/bytedance/seedance-2-mini
 """
 
@@ -13,20 +16,22 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import sys
 from pathlib import Path
 from typing import Any
 
-from kie_common import KieTaskClient
+from asset_versions import format_version, load_manifest, next_version, register_leg
+from kie_common import KieTaskClient, run_task_with_retry
 from kie_file_upload import KieFileUploadClient
-from media_format import resolve_cell_aspect
+from media_format import load_project_meta, resolve_cell_aspect
 from video_frame_chain import resolve_leg_frame_paths, save_leg_last_frame
 
 MODEL = "bytedance/seedance-2-mini"
 SUPPORTED_ASPECT = frozenset({"1:1", "4:3", "3:4", "16:9", "9:16", "21:9", "adaptive"})
 SUPPORTED_RESOLUTION = frozenset({"480p", "720p"})
 DURATION_MIN = 4
-DURATION_MAX = 8
-DEFAULT_DURATION = 4
+DURATION_MAX = 10
+DEFAULT_DURATION = 5
 DEFAULT_RESOLUTION = "480p"
 
 FORBIDDEN_URL_MARKERS = ("example.com", "localhost", "127.0.0.1", "placeholder")
@@ -64,16 +69,6 @@ def _resolve_project_path(project: Path, path: Path) -> Path:
     return path if path.is_absolute() else (project / path)
 
 
-def load_project_meta(project: Path) -> dict[str, Any]:
-    meta_path = project / "project.meta.json"
-    if not meta_path.is_file():
-        return {}
-    try:
-        return json.loads(meta_path.read_text(encoding="utf-8-sig"))
-    except json.JSONDecodeError:
-        return {}
-
-
 def resolve_resolution(cli_value: str | None, meta: dict[str, Any]) -> str:
     raw = (cli_value or meta.get("video_resolution") or DEFAULT_RESOLUTION).strip().lower()
     if raw in {"480", "480p"}:
@@ -85,16 +80,46 @@ def resolve_resolution(cli_value: str | None, meta: dict[str, Any]) -> str:
     )
 
 
-def resolve_duration(cli_value: int | None, meta: dict[str, Any]) -> int:
+def resolve_duration(
+    cli_value: int | None,
+    meta: dict[str, Any],
+    leg_index: int | None = None,
+) -> int:
+    """Resolve leg duration: CLI > video_durations[leg] > video_duration > default."""
     if cli_value is not None:
         duration = int(cli_value)
     else:
-        hint = meta.get("video_duration")
-        duration = int(hint) if hint is not None else DEFAULT_DURATION
+        duration = None
+        durations = meta.get("video_durations")
+        if (
+            isinstance(durations, list)
+            and leg_index is not None
+            and 0 <= leg_index < len(durations)
+            and durations[leg_index] is not None
+        ):
+            try:
+                duration = int(durations[leg_index])
+            except (TypeError, ValueError):
+                raise SystemExit(
+                    f"video_durations[{leg_index}] must be a number of seconds, "
+                    f"got {durations[leg_index]!r} in project.meta.json"
+                )
+        if duration is None:
+            hint = meta.get("video_duration")
+            if hint is not None:
+                try:
+                    duration = int(hint)
+                except (TypeError, ValueError):
+                    raise SystemExit(
+                        f"video_duration must be a number of seconds, "
+                        f"got {hint!r} in project.meta.json"
+                    )
+            else:
+                duration = DEFAULT_DURATION
     if duration < DURATION_MIN or duration > DURATION_MAX:
         raise SystemExit(
             f"duration must be {DURATION_MIN}–{DURATION_MAX} (got {duration}). "
-            f"Default: {DEFAULT_DURATION}s."
+            f"Default: {DEFAULT_DURATION}s; complex morphs often need 8–10s."
         )
     return duration
 
@@ -156,7 +181,7 @@ def validate_frame_urls(*, first_frame_url: str, last_frame_url: str) -> None:
 
 
 class Seedance2MiniClient(KieTaskClient):
-    def create_leg(
+    def leg_payload(
         self,
         *,
         first_frame_url: str,
@@ -168,7 +193,7 @@ class Seedance2MiniClient(KieTaskClient):
         generate_audio: bool = False,
         nsfw_checker: bool = False,
         callback_url: str | None = None,
-    ) -> str:
+    ) -> dict[str, Any]:
         if aspect_ratio not in SUPPORTED_ASPECT:
             raise ValueError(f"Unsupported aspect_ratio {aspect_ratio!r}")
         if resolution not in SUPPORTED_RESOLUTION:
@@ -191,7 +216,10 @@ class Seedance2MiniClient(KieTaskClient):
         }
         if callback_url:
             payload["callBackUrl"] = callback_url
-        return self.create_task_raw(payload)
+        return payload
+
+    def create_leg(self, **kwargs: Any) -> str:
+        return self.create_task_raw(self.leg_payload(**kwargs))
 
 
 def main() -> None:
@@ -223,13 +251,11 @@ def main() -> None:
     parser.add_argument("--version", type=int, default=None)
     args = parser.parse_args()
 
-    from asset_versions import format_version, next_version, register_leg
-
     project = args.project.resolve()
     workspace = args.workspace or project
     meta = load_project_meta(project)
     resolution = resolve_resolution(args.resolution, meta)
-    duration = resolve_duration(args.duration, meta)
+    duration = resolve_duration(args.duration, meta, args.leg)
     aspect_ratio = resolve_cell_aspect(args.aspect_ratio, meta)
     if aspect_ratio not in SUPPORTED_ASPECT:
         raise SystemExit(f"Unsupported aspect_ratio {aspect_ratio!r} for Seedance")
@@ -259,6 +285,25 @@ def main() -> None:
         end_override=end_override,
     )
     validate_local_leg_inputs(start_path=start_path, end_path=end_path, prompt=prompt)
+
+    legs_dir = project / "assets" / "video" / "legs"
+    if args.version is not None:
+        ver = args.version
+        if ver < 1:
+            raise SystemExit(f"--version must be >= 1, got {ver}")
+        ver_s = format_version(ver)
+        out_candidate = legs_dir / f"{ver_s}-leg-{args.leg:02d}.mp4"
+        manifest_versions = (
+            (load_manifest(project).get("legs") or {}).get(str(args.leg), {}) or {}
+        ).get("versions") or {}
+        if out_candidate.exists() or ver_s in manifest_versions:
+            raise SystemExit(
+                f"version {ver_s} already exists for leg {args.leg} "
+                f"({out_candidate.name}); use next one — never overwrite (asset versioning contract)"
+            )
+    else:
+        ver = next_version(legs_dir, f"*-leg-{args.leg:02d}.mp4")
+        ver_s = format_version(ver)
 
     summary: dict[str, Any] = {
         "model": MODEL,
@@ -297,7 +342,7 @@ def main() -> None:
 
     client = Seedance2MiniClient(workspace=workspace)
     print(f"createTask {MODEL} leg={args.leg} resolution={resolution} duration={duration}")
-    task_id = client.create_leg(
+    payload = client.leg_payload(
         first_frame_url=first_frame_url,
         last_frame_url=last_frame_url,
         prompt=prompt,
@@ -306,16 +351,18 @@ def main() -> None:
         duration=duration,
         generate_audio=bool(args.generate_audio),
     )
-    print(f"taskId={task_id}")
-    data = client.wait_for_task(task_id)
+    data = run_task_with_retry(client, payload, max_attempts=5)
     urls = client.extract_result_urls(data)
     if not urls:
         raise SystemExit(f"No resultUrls: {data}")
+    if len(urls) > 1:
+        print(
+            f"WARN: API returned {len(urls)} result urls; using only the first",
+            file=sys.stderr,
+            flush=True,
+        )
 
-    legs_dir = project / "assets" / "video" / "legs"
     legs_dir.mkdir(parents=True, exist_ok=True)
-    ver = args.version or next_version(legs_dir, f"*-leg-{args.leg:02d}.mp4")
-    ver_s = format_version(ver)
     out = legs_dir / f"{ver_s}-leg-{args.leg:02d}.mp4"
     client.download(urls[0], out)
     print(out)
@@ -331,7 +378,7 @@ def main() -> None:
         json.dumps(
             {
                 "model": MODEL,
-                "taskId": task_id,
+                "taskId": data.get("taskId"),
                 "version": ver_s,
                 "leg": args.leg,
                 "chain": chain_meta,

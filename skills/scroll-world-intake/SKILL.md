@@ -66,7 +66,7 @@ description: Intake interview for Scroll World brand kit and integration mode. U
 - **Крупный блок** (почти на весь экран / hero) → `video_resolution: 720p`
 
 Запиши в `02-brand-kit.md` и в `project.meta.json`:
-`insert_placement`, `video_resolution` (`480p`|`720p`), опционально `video_duration` (**4** по умолчанию, диапазон 4–8), опционально `storyboard_resolution` (`2K` default / `4K` по запросу).
+`insert_placement`, `video_resolution` (`480p`|`720p`), опционально `video_duration` (диапазон **4–15**, дефолта нет; per-leg `duration_sec` выбирает Director в Journey — если не задана нигде, это ошибка конфигурации), опционально `storyboard_resolution` (`2K` default / `4K` по запросу).
 
 Итог intake в meta: **`media_aspect_ratio`**, `insert_placement`, `video_resolution` (default `480p`), `storyboard_resolution` (default `2K`).
 

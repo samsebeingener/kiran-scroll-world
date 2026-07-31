@@ -15,8 +15,6 @@ Bad seams come from three layers:
 | Rule | Detail |
 |------|--------|
 | Chain order | Legs `0 → 1 → …`; leg `i>0` **start** = last frame of active leg `i−1` MP4 |
-| Plate fidelity | `shared/frame-fidelity-contract.md` — prompts calibrated from actual PNG plates |
-| Drift log | After each leg, append `{NNN}-leg-drift-log.md`; **major/blocker** → re-gen before continuing |
 | Re-gen leg `k` | Must re-run legs `k+1…` or recalibrate their start plates |
 | No storyboard stills in scrub | Posters from encoded video only — `shared/scrub-still-contract.md` |
 
@@ -121,6 +119,5 @@ Portfolio packs must copy **current** `src/scrub-engine.js`, `mount.js`, `overla
 ## Related
 
 - `shared/scrub-still-contract.md`
-- `shared/frame-fidelity-contract.md`
 - `shared/video-generation-contract.md`
 - `references/pipeline.md` § Seam playback

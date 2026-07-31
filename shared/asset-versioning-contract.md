@@ -39,7 +39,22 @@
 }
 ```
 
-Video leg `i>0` **start** = last frame of active leg `i−1` MP4 (not storyboard frame `i+1`). **End** = storyboard `active_map[str(i+2)]`.
+Video leg `i>0` **start** = last frame of active leg `i−1` MP4 (not storyboard frame `i+1`). **End** = storyboard `active_map[str(playback_chain[i+1])]` (default continuous: `i+2`).
+
+### playback_chain / reserve
+
+`project.meta.json` may set a **prefix** of board indices for video:
+
+- `playback_chain`: must be contiguous `[1, 2, …, K]` with no gaps (K ≤ M). Video legs = K−1.
+- `reserve`: optional `[K+1, …, M]` — storyboard frames kept in the board but not used as video end targets.
+- `frames.active_map` in the manifest **still lists all M frames** (1..M), including reserved cells. Only the video chain skips them.
+
+Example (M=6, video through KF1→KF4, reserve KF5–KF6):
+
+```json
+"playback_chain": [1, 2, 3, 4],
+"reserve": [5, 6]
+```
 
 ## Манифест
 

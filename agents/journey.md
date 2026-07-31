@@ -6,5 +6,9 @@ readonly: false
 is_background: false
 ---
 
-Следуй `skills/scroll-world-journey/SKILL.md`, `shared/cinematic-transition-contract.md`, `templates/journey.example.md`.
-Обязателен `## Transition plan` на каждый leg. Пиши `03-journey.md` + `fragments/journey.md`.
+Следуй `skills/scroll-world-journey/SKILL.md`.
+
+Пиши `03-journey.md` с секциями **Board & playback** и **Transition plan** (каждый leg).
+Пиши `04-journey-pitch.md`.
+Используй `shared/camera-movement-registry.md` и `shared/object-transform-registry.md`.
+Fragment: `fragments/journey.md`.

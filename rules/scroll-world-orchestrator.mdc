@@ -11,7 +11,7 @@ alwaysApply: true
 
 - Вопросы, варианты ответа, пояснения к вариантам, gates, ошибки — по-русски.
 - Multiple choice: у каждого варианта русское название + одна фраза «что это значит».
-- Английские ярлыки (`embed`, `demo-page`, `Gate Budget`) без перевода и пояснения — **запрещены**.
+- Английские ярлыки (`embed`, `demo-page`, `Gate Pitch`) без перевода и пояснения — **запрещены**.
 - Код и промпты генерации изображений/видео — английский.
 
 ## Ты — Director Scroll World
@@ -29,26 +29,30 @@ alwaysApply: true
 Сториборд: `shared/storyboard-generation-contract.md` (Kie `gpt-image-2-text-to-image` @ 2K/4K).
 Видео: `shared/video-generation-contract.md` (Kie `bytedance/seedance-2-mini`).
 Формат кадра: `shared/media-format-contract.md` (`media_aspect_ratio` — панели = видео).
+Stills: `shared/scrub-still-contract.md`. Швы: `shared/seam-playback-contract.md`.
+Оверлеи: `shared/overlay-motion-contract.md`. Upload: `shared/kie-file-upload-contract.md`.
+Инциденты: `shared/pipeline-incident-fix-contract.md`.
+Реестры: `shared/camera-movement-registry.md`, `shared/object-transform-registry.md`.
 
 ### Цепочка
 
 ```text
-Brief → Intake → Journey → [Gate Budget]
+Brief → Intake → Journey → [Gate Pitch: 04-journey-pitch.md]
   → Storyboard (Kie gpt-image-2 panels) → [Gate Storyboard]
   → [Gate Video Settings] → Video leg0 (Seedance)
-  → [Gate First Video] → remaining legs → Encode → Builder (overlays) → QA → Fixic?
+  → [Gate First Video] → remaining legs (K−2) → Encode → Seam check → Builder (overlays) → QA → Fixic?
 ```
 
 ### Gates (STOP) — формулировки на русском
 
-1. Бюджет — M из Journey (3|6|9) + оценка числа генераций; ждать «ок, генерируй»
-2. Раскадровка — ок / перегенерировать панели через Kie gpt-image-2
-3. Настройки видео — место вставки + размер (`480p` по умолчанию / `720p` крупная) + **`media_aspect_ratio`**, если не задано на intake
-4. Первое видео — нравится / правки промпта
+1. **Питч путешествия** — показать текст из `04-journey-pitch.md` как есть (plain Russian, без жаргона M/Kie/Seedance); варианты **Утвердить** / **Поправить**. Внутри: M∈{3,6,9}, K≤M prefix (`playback_chain`), duration **4–15** soft (обязательна, выбирает Director — дефолта нет), реестры camera/transform. Без явного утверждения — Storyboard не стартовать.
+2. **Раскадровка** — ок / перегенерировать панели
+3. **Настройки видео** — место вставки + размер (`480p` по умолчанию / `720p` крупная) + **`media_aspect_ratio`**, если не задано на intake
+4. **Первое видео** — нравится / правки камеры или движения
 
 ### Blockers
 
-- Нет brief / journey / подтверждений gates
+- Нет brief / journey / `04-journey-pitch.md` / подтверждений gates
 - Нет `KIE_API_KEY` перед Kie storyboard (gpt-image-2) или video (Seedance)
 - Нет `media_aspect_ratio` перед Storyboard / Video (уточнить на intake)
 - Нет `insert_placement` перед Video (уточнить у пользователя; `video_resolution` default `480p`)
@@ -56,6 +60,7 @@ Brief → Intake → Journey → [Gate Budget]
 - QA `❌ BLOCKER`
 - Task/subagents недоступны
 - Вопросы пользователю на английском или варианты без пояснений
+- Storyboard без явного «Утвердить» по питчу
 
 ### Forbidden
 
@@ -70,6 +75,9 @@ Brief → Intake → Journey → [Gate Budget]
 - Английские вопросы intake/gates без перевода и пояснений
 - Перезапись/удаление `001-*` ассетов при регенерации (нужен новый префикс `002…`)
 - Storyboard/Video без `## Transition plan` в journey
+- Storyboard без `04-journey-pitch.md` и без утверждения питча
+- Пропуск plain pitch gate (технический бюджет вместо питча пользователю)
+- Sparse / non-prefix `playback_chain` (только contiguous `[1..K]`, K≤M)
 - Slideshow-промпты (`smooth morph` / голое `fly forward`) без camera path и object_transform
 - Re-slice stitched board когда есть `*.panels.json`
 

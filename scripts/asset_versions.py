@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import sys
 from pathlib import Path
 
 VERSION_RE = re.compile(r"^(\d{3})-")
@@ -96,7 +97,18 @@ def active_leg_files(project: Path) -> list[Path]:
     legs_meta = manifest.get("legs") or {}
     files: list[Path] = []
     if isinstance(legs_meta, dict) and legs_meta:
-        for leg_id in sorted(legs_meta.keys(), key=lambda x: int(x)):
+        numeric_ids: list[tuple[int, str]] = []
+        for leg_id in legs_meta:
+            try:
+                numeric_ids.append((int(leg_id), leg_id))
+            except (TypeError, ValueError):
+                print(
+                    f"WARN: skipping non-numeric leg key {leg_id!r} in manifest.legs",
+                    file=sys.stderr,
+                    flush=True,
+                )
+        missing: list[str] = []
+        for _, leg_id in sorted(numeric_ids):
             entry = legs_meta[leg_id]
             if not isinstance(entry, dict):
                 continue
@@ -111,11 +123,30 @@ def active_leg_files(project: Path) -> list[Path]:
             path = project / rel
             if path.is_file():
                 files.append(path)
+            else:
+                missing.append(rel)
+        if missing:
+            print(
+                "WARN: active leg files from manifest are missing on disk: "
+                + ", ".join(missing),
+                file=sys.stderr,
+                flush=True,
+            )
         if files:
             return files
 
     legs_dir = project / "assets" / "video" / "legs"
-    return sorted(legs_dir.glob("*-leg-*.mp4"))
+    fallback = sorted(legs_dir.glob("*-leg-*.mp4"))
+    prefixes = {parse_version_prefix(p.name) for p in fallback}
+    prefixes.discard(None)
+    if len(prefixes) > 1:
+        print(
+            "WARN: fallback leg glob mixes version prefixes "
+            f"{sorted(prefixes)} — files from different versions are used together",
+            file=sys.stderr,
+            flush=True,
+        )
+    return fallback
 
 
 def set_frame_active_map(project: Path, active_map: dict[str, str], *, merge: bool = True) -> dict:

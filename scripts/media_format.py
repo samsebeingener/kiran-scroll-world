@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import math
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -33,7 +34,12 @@ def load_project_meta(project: Path) -> dict[str, Any]:
         return {}
     try:
         return json.loads(meta_path.read_text(encoding="utf-8-sig"))
-    except json.JSONDecodeError:
+    except json.JSONDecodeError as exc:
+        print(
+            f"WARN: broken JSON in {meta_path}: {exc} — continuing with empty meta",
+            file=sys.stderr,
+            flush=True,
+        )
         return {}
 
 
@@ -127,15 +133,13 @@ def resolve_storyboard_resolution(meta: dict[str, Any], cli: str | None = None) 
     return raw
 
 
-def storyboard_strategy(m: int, cell_aspect: str, resolution: str = "2K") -> str:
+def storyboard_strategy() -> str:
     """Only production path: Kie gpt-image-2 panels at cell aspect, then local stitch."""
-    _ = (m, cell_aspect, resolution)
     return "panels_then_stitch"
 
 
-def gpt_image_resolution(m: int, cell_aspect: str, preferred: str = "2K") -> str:
+def gpt_image_resolution(cell_aspect: str, preferred: str = "2K") -> str:
     """Resolution for panel generation via Kie gpt-image-2 (2K default; 4K on request)."""
-    _ = m
     if preferred not in STORYBOARD_RESOLUTIONS:
         preferred = "2K"
     # gpt-image-2: 1:1 cannot use 4K
@@ -175,9 +179,11 @@ def resolve_encode_dimensions(
     if cli_width is not None:
         cell = resolve_cell_aspect(None, meta, required=False)
         w, h = parse_aspect(cell)
-        height = round(int(cli_width) * h / w)
+        width = int(cli_width)
+        width += width % 2
+        height = round(width * h / w)
         height += height % 2
-        return int(cli_width), height
+        return width, height
     resolution = (meta.get("video_resolution") or "480p").strip().lower()
     cell = resolve_cell_aspect(None, meta, required=False)
     return encode_dimensions(resolution, cell)

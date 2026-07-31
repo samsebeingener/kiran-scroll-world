@@ -113,8 +113,8 @@ def main() -> None:
     m = resolve_frames_count(meta, args.frames)
     cell_aspect = resolve_cell_aspect(None, meta)
     preferred = resolve_storyboard_resolution(meta, args.resolution)
-    resolution = gpt_image_resolution(m, cell_aspect, preferred)
-    strategy = storyboard_strategy(m, cell_aspect, resolution)
+    resolution = gpt_image_resolution(cell_aspect, preferred)
+    strategy = storyboard_strategy()
     if strategy != "panels_then_stitch":
         raise SystemExit(f"Unexpected strategy {strategy!r}")
 

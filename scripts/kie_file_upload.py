@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import json
 import mimetypes
 import os
 import time
@@ -51,8 +52,6 @@ class KieFileUploadClient:
 
     def _extract_file_url(self, body: dict[str, Any]) -> str:
         """Prefer data.fileUrl (canonical public URL), then downloadUrl."""
-        if body.get("success") is False and body.get("code") not in (200, None):
-            raise RuntimeError(f"Kie upload failed: {body.get('msg', body)}")
         code = body.get("code")
         if code is not None and code != 200:
             raise RuntimeError(f"Kie upload failed: {body.get('msg', body)}")
@@ -90,42 +89,48 @@ class KieFileUploadClient:
         mime = mime or "application/octet-stream"
 
         last_err: Exception | None = None
+        resp: requests.Response | None = None
         for attempt in range(1, 4):
             try:
                 with local_path.open("rb") as fh:
                     files: dict[str, Any] = {
                         "file": (name, fh, mime),
                         "uploadPath": (None, upload_path),
+                        "fileName": (None, name),
                     }
-                    if file_name or name:
-                        files["fileName"] = (None, name)
                     resp = requests.post(
                         f"{self.upload_base}/api/file-stream-upload",
                         headers=self._auth_headers,
                         files=files,
                         timeout=timeout,
                     )
-                break
             except requests.RequestException as exc:
                 last_err = exc
-                if attempt < 3:
-                    time.sleep(2 * attempt)
-                    continue
-                if local_path.stat().st_size <= 10 * 1024 * 1024:
-                    print(
-                        f"WARN: stream upload failed ({exc}); falling back to base64",
-                        flush=True,
-                    )
-                    return self.upload_base64(
-                        local_path, upload_path=upload_path, file_name=name, timeout=timeout
-                    )
-                raise
-        else:
-            if last_err:
+                resp = None
+            else:
+                if resp.status_code == 401:
+                    raise RuntimeError("401 Unauthorized — check KIE_API_KEY")
+                if resp.status_code < 500:
+                    break
+                last_err = RuntimeError(
+                    f"Stream upload HTTP {resp.status_code}: {resp.text[:300]}"
+                )
+            if attempt < 3:
+                time.sleep(5)
+                continue
+            if local_path.stat().st_size <= 10 * 1024 * 1024:
+                print(
+                    f"WARN: stream upload failed ({last_err}); falling back to base64",
+                    flush=True,
+                )
+                return self.upload_base64(
+                    local_path, upload_path=upload_path, file_name=name, timeout=timeout
+                )
+            if isinstance(last_err, requests.RequestException):
                 raise last_err
-            raise RuntimeError("upload_stream failed without response")
-        if resp.status_code == 401:
-            raise RuntimeError("401 Unauthorized — check KIE_API_KEY")
+            break  # final 5xx response — handled below
+        if resp is None:
+            raise RuntimeError(f"upload_stream failed without response: {last_err}")
         if not resp.ok:
             raise RuntimeError(f"Stream upload failed HTTP {resp.status_code}: {resp.text}")
         return self._wrap(resp.json())
@@ -246,8 +251,6 @@ def main() -> None:
         raise SystemExit(f"Unknown method: {method}")
 
     if args.json:
-        import json
-
         print(json.dumps(meta, ensure_ascii=False, indent=2))
     else:
         print(meta["publicUrl"])

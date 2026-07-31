@@ -1,10 +1,15 @@
 # Video leg prompt template (cinematic, detailed)
 
-Fill from `03-journey.md` → Transition plan. Copy **only** the block inside ` ```text ` into `05-image-prompts/{NNN}-leg-{LL}.md` — sent to Kie verbatim.
+Fill from `03-journey.md` → Transition plan (`camera_moves`, `object_transform_code`, `duration_sec`) + registries + live read of the start/end PNG plates. Copy **only** the block inside ` ```text ` into `05-image-prompts/{NNN}-leg-{LL}.md` — sent to Kie verbatim.
 
 **Length (Kie API):** min 3, max 20 000 chars. **Product target:** **1 200–4 000** chars per leg (light model needs rich direction). Script rejects &lt; 800.
 
 **Agent rules (not for Kie):** which PNGs are uploaded → `kie_seedance_2_mini.py`. See `shared/kie-prompt-contract.md`. No pipeline meta in the prompt file.
+
+**Fill helpers:**
+- `{{DURATION}}` = leg `duration_sec` (scale all beat timings to this length).
+- `{{CAMERA_MOVE_SNIPPETS}}` = `prompt_snippet` from `shared/camera-movement-registry.md` for each `camera_moves` id (primary first).
+- `{{TRANSFORM_MECHANIC}}` = adapted `prompt_examples` / `short_clip_variant` from `shared/object-transform-registry.md` for `object_transform_code` (match actual plates).
 
 ```text
 The first frame is the exact start. The last frame is the exact end.
@@ -22,20 +27,28 @@ List key props, materials, colors, spatial layout left/center/right, depth layer
 LAST FRAME (what we must land on at t=end):
 {{LAST_FRAME_DESCRIPTION}}
 Same axes — what changed vs the first frame; every major prop accounted for.
+Copy geometry, accent placement, and silhouette from a live read of the end PNG — do not paraphrase journey text.
 
-CAMERA PATH (timed beats — one continuous move):
-0.0–1.0s: {{CAMERA_BEAT_1}}
-1.0–2.5s: {{CAMERA_BEAT_2}}
-2.5–{{DURATION_MINUS_HALF}}s: {{CAMERA_BEAT_3}}
-Final ~0.5s: slow steady forward drift; ease-in-out; no sudden stop or snap zoom.
+VISUAL PLATE FIDELITY:
+Start plate locks: {{START_PLATE_LOCKS}}
+End plate locks: {{END_PLATE_LOCKS}}
+Do not introduce geometry not present in either plate. Landing frame must match end plate silhouette, accent axis, and material exactly.
+
+CAMERA PATH (timed beats — one continuous move; scale all times to {{DURATION}}s):
+{{CAMERA_MOVE_SNIPPETS}}
+0.0–{{BEAT_1_END}}s: {{CAMERA_BEAT_1}}
+{{BEAT_1_END}}–{{BEAT_2_END}}s: {{CAMERA_BEAT_2}}
+{{BEAT_2_END}}–{{BEAT_3_END}}s: {{CAMERA_BEAT_3}}
+Final ~0.5s: ease-in-out settle on the last-frame composition; no sudden stop or snap zoom.
 
 WORLD CONTINUITY:
 Same miniature clay diorama throughout. {{CONTINUITY_LANDMARKS}}.
 Shared off-white ground plane #{{GROUND_HEX}}; identical warm soft studio key + gentle fill; same backdrop gradient; scale consistent (toy-world proportions).
 
-OBJECT TRANSFORMATION (in-camera, while camera moves):
+OBJECT TRANSFORM (in-camera, while camera moves):
+{{TRANSFORM_MECHANIC}}
 {{OBJECT_TRANSFORM_BEAT_BY_BEAT}}
-Name each visible element in the first frame and what it becomes in the last frame (material, silhouette, position). No pop-in; no teleport; morph happens along the camera path.
+Name each visible element in the first frame and what it becomes in the last frame (material, silhouette, position). No pop-in; no teleport; change happens along the camera path using the mechanic above.
 
 MATERIAL & LIGHT:
 Matte soft clay, subtle fingerprints, no glossy plastic. Shadows soft and consistent with studio lighting. No bloom, no lens flare, no film grain overlay.

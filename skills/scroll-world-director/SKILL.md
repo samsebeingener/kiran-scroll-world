@@ -10,6 +10,18 @@ description: Director Scroll World — storyboard M∈{3,6,9} (from Journey) →
 Pitfalls: `shared/agent-pipeline-pitfalls.md`  
 Общение с пользователем: `shared/user-communication-contract.md` (**только русский**, варианты с пояснениями)
 
+## Gate после Journey (plain pitch)
+
+После Journey — **STOP** по `04-journey-pitch.md`: показать пользователю plain Russian питч verbatim; варианты **Утвердить** / **Поправить**.  
+Внутренний `04-budget.md` + meta (`frames`, `playback_chain`, `reserve`, `video_durations`) — не подменять питч техническим бюджетом.  
+Без явного «Утвердить» — Storyboard не стартовать. См. `agents/director.md` §3.
+
+Реестры камеры / трансформаций (для Journey и Video субагентов, не для текста питча пользователю):
+
+- `shared/camera-movement-registry.md`
+- `shared/object-transform-registry.md`
+- `shared/cinematic-transition-contract.md`
+
 ## Цепочка
 
 См. `agents/director.md`.

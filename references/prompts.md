@@ -7,8 +7,11 @@
 3. Brand kit
 4. Art direction
 5. Embed vs demo-page + insert placement + video size (480p default / 720p large)
-6. Gate Budget: M, estimated Kie gpt-image-2 panels + (M−1) Seedance videos
-7. Gate Video Settings (if unset): insert place + resolution before first createTask
+
+## Gates
+
+1. Gate Pitch: show `04-journey-pitch.md` verbatim (plain Russian); internal budget M panels + (K−1) videos; approve before storyboard
+2. Gate Video Settings (if unset): insert place + resolution before first createTask; duration 4–15 (required per-leg from journey — no default)
 
 ## Storyboard panel prompt shape
 

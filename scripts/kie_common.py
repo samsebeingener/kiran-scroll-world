@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import time
 from pathlib import Path
 from typing import Any
@@ -20,6 +21,40 @@ except ImportError:
     load_dotenv = None  # type: ignore
 
 DEFAULT_BASE = "https://api.kie.ai/api/v1"
+
+RETRY_DELAY_SEC = 5.0
+
+FATAL_KIE_CODES: dict[int, str] = {
+    401: "Unauthorized — check KIE_API_KEY",
+    402: "Insufficient Credits — top up the Kie balance",
+    404: "Not Found — check endpoint/model",
+    422: "Validation Error — check request payload",
+    433: "Sub-key Usage Limit reached",
+    505: "Feature Disabled for this account/model",
+}
+TRANSIENT_KIE_CODES = frozenset({429, 455, 500, 501})
+
+
+class KieTransientError(RuntimeError):
+    """Retryable Kie failure (network, 429/455/5xx, task state=fail)."""
+
+
+class KieTaskFailedError(KieTransientError):
+    """Task reached state=fail; caller should re-submit a new task."""
+
+
+def check_kie_body(body: dict[str, Any], context: str) -> None:
+    """Classify Kie API body code: fatal → SystemExit, transient → KieTransientError."""
+    code = body.get("code")
+    if code == 200:
+        return
+    msg = body.get("msg", body)
+    if isinstance(code, int):
+        if code in FATAL_KIE_CODES:
+            raise SystemExit(f"{context}: Kie {code} {FATAL_KIE_CODES[code]}: {msg}")
+        if code in TRANSIENT_KIE_CODES or code >= 500:
+            raise KieTransientError(f"{context}: Kie {code}: {msg}")
+    raise RuntimeError(f"{context}: unexpected Kie code {code}: {msg}")
 
 
 def find_env_file(workspace: Path | str | None = None) -> Path | None:
@@ -94,13 +129,28 @@ class KieTaskClient:
             }
         )
 
-    def create_task_raw(self, payload: dict[str, Any]) -> str:
-        url = f"{self.base_url}/jobs/createTask"
-        resp = self.session.post(url, json=payload, timeout=60)
+    def _request(self, method: str, url: str, context: str, **kwargs: Any) -> dict[str, Any]:
+        try:
+            resp = self.session.request(method, url, timeout=60, **kwargs)
+        except requests.RequestException as exc:
+            raise KieTransientError(f"{context}: network error: {exc}") from exc
+        if resp.status_code in FATAL_KIE_CODES:
+            raise SystemExit(
+                f"{context}: HTTP {resp.status_code} "
+                f"{FATAL_KIE_CODES[resp.status_code]}: {resp.text[:300]}"
+            )
+        if resp.status_code == 429 or resp.status_code >= 500:
+            raise KieTransientError(
+                f"{context}: HTTP {resp.status_code}: {resp.text[:300]}"
+            )
         resp.raise_for_status()
         body = resp.json()
-        if body.get("code") != 200:
-            raise RuntimeError(f"createTask failed: {body.get('msg', body)}")
+        check_kie_body(body, context)
+        return body
+
+    def create_task_raw(self, payload: dict[str, Any]) -> str:
+        url = f"{self.base_url}/jobs/createTask"
+        body = self._request("POST", url, "createTask", json=payload)
         task_id = body.get("data", {}).get("taskId")
         if not task_id:
             raise RuntimeError(f"No taskId in response: {body}")
@@ -109,25 +159,36 @@ class KieTaskClient:
     def get_task(self, task_id: str) -> dict[str, Any]:
         qs = urlencode({"taskId": task_id})
         url = f"{self.base_url}/jobs/recordInfo?{qs}"
-        resp = self.session.get(url, timeout=60)
-        resp.raise_for_status()
-        body = resp.json()
-        if body.get("code") != 200:
-            raise RuntimeError(f"recordInfo failed: {body.get('msg', body)}")
+        body = self._request("GET", url, "recordInfo")
         return body.get("data", {})
+
+    PENDING_STATES = frozenset(
+        {"waiting", "queuing", "queue", "pending", "generating", "running", "processing", None}
+    )
 
     def wait_for_task(self, task_id: str) -> dict[str, Any]:
         deadline = time.time() + self.poll_timeout
         attempt = 0
         while time.time() < deadline:
-            data = self.get_task(task_id)
+            try:
+                data = self.get_task(task_id)
+            except KieTransientError as exc:
+                print(
+                    f"  poll transient error ({exc}); retry in {RETRY_DELAY_SEC}s",
+                    file=sys.stderr,
+                    flush=True,
+                )
+                time.sleep(RETRY_DELAY_SEC)
+                continue
             state = data.get("state")
             if state == "success":
                 return data
             if state == "fail":
-                raise RuntimeError(
+                raise KieTaskFailedError(
                     f"Task failed: {data.get('failCode')} — {data.get('failMsg')}"
                 )
+            if state not in self.PENDING_STATES:
+                raise RuntimeError(f"Task {task_id} unknown terminal state: {state!r} — {data}")
             attempt += 1
             if attempt == 1 or attempt % 6 == 0:
                 elapsed = int(time.time() - (deadline - self.poll_timeout))
@@ -141,7 +202,12 @@ class KieTaskClient:
         if not raw:
             return []
         if isinstance(raw, str):
-            parsed = json.loads(raw)
+            try:
+                parsed = json.loads(raw)
+            except json.JSONDecodeError as exc:
+                raise RuntimeError(
+                    f"resultJson is not valid JSON: {exc}; raw={raw[:200]!r}"
+                ) from exc
         else:
             parsed = raw
         urls = parsed.get("resultUrls") or []
@@ -153,5 +219,58 @@ class KieTaskClient:
         dest.parent.mkdir(parents=True, exist_ok=True)
         resp = self.session.get(url, timeout=300)
         resp.raise_for_status()
-        dest.write_bytes(resp.content)
+        content_type = (resp.headers.get("Content-Type") or "").lower()
+        body = resp.content
+        if not body:
+            raise SystemExit(f"Download failed: empty body from {url}")
+        if "text/html" in content_type or body.lstrip()[:15].lower().startswith(
+            (b"<!doctype", b"<html")
+        ):
+            raise SystemExit(
+                f"Download failed: CDN returned HTML instead of media "
+                f"(status {resp.status_code}, content-type {content_type or 'n/a'}) for {url}. "
+                "Not writing garbage to file."
+            )
+        dest.write_bytes(body)
         return dest
+
+
+def run_task_with_retry(
+    client: KieTaskClient,
+    payload: dict[str, Any],
+    *,
+    max_attempts: int = 5,
+    retry_delay: float = RETRY_DELAY_SEC,
+) -> dict[str, Any]:
+    """Create task + poll; on transient failure re-submit a NEW task after retry_delay.
+
+    Fatal Kie codes (401/402/404/422/433/505) raise SystemExit immediately —
+    retry cannot fix auth/credits/validation.
+    """
+    last_exc: Exception | None = None
+    for attempt in range(1, max_attempts + 1):
+        try:
+            task_id = client.create_task_raw(payload)
+        except KieTransientError as exc:
+            last_exc = exc
+            print(
+                f"attempt {attempt}/{max_attempts}: createTask transient error ({exc}); "
+                f"re-submit in {retry_delay}s",
+                file=sys.stderr,
+                flush=True,
+            )
+            time.sleep(retry_delay)
+            continue
+        print(f"taskId={task_id} (attempt {attempt}/{max_attempts})", flush=True)
+        try:
+            return client.wait_for_task(task_id)
+        except KieTaskFailedError as exc:
+            last_exc = exc
+            print(
+                f"attempt {attempt}/{max_attempts}: task {task_id} failed ({exc}); "
+                f"re-submitting new task in {retry_delay}s",
+                file=sys.stderr,
+                flush=True,
+            )
+            time.sleep(retry_delay)
+    raise SystemExit(f"Kie task failed after {max_attempts} attempts: {last_exc}")

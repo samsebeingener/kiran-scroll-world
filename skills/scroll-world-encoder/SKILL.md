@@ -28,4 +28,13 @@ override ширины: `--width 1280` (высота из aspect)
 Контракт: `shared/media-format-contract.md`, `scripts/media_format.py`.
 
 Нужен `ffmpeg` на PATH. Выход: `assets/encoded/{NNN}-leg-*.mp4`.
+
+После encode — обязательный seam gate:
+
+```bash
+python scripts/check_seam_compatibility.py --project <PROJECT> --window 5
+```
+
+Пишет `assets/seam-compatibility.json` + `.md`; exit code 2 = `❌ BLOCKER` (`shared/seam-playback-contract.md`).
+
 Fragment: `fragments/encoder.md`.

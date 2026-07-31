@@ -14,10 +14,11 @@ Sequential legs with **video chain**:
 
 | Leg | first frame (start) | last frame (end) |
 |-----|---------------------|------------------|
-| `0` | storyboard `active_map["1"]` | storyboard `active_map["2"]` |
-| `i>0` | **last frame of active leg `i−1` MP4** (ffmpeg extract) | storyboard `active_map[str(i+2)]` |
+| `0` | storyboard `active_map[str(playback_chain[0])]` (default `1`) | storyboard `active_map[str(playback_chain[1])]` (default `2`) |
+| `i>0` | **last frame of active leg `i−1` MP4** (ffmpeg extract) | storyboard `active_map[str(playback_chain[i+1])]` (default `i+2`) |
 
-- Video count = **M − 1**.
+- Default: `playback_chain` omitted → K = M → video count = **M − 1**.
+- With `playback_chain` = prefix `[1..K]`: video count = **K − 1** (max leg index = K − 2). Optional `reserve` = `[K+1..M]` are board frames not used in video legs; `active_map` still holds all M frames.
 - Generate legs **in order** `0 → 1 → …`.
 - After each leg: cache `assets/frames/{NNN}-leg-{LL}-last.png`.
 - `connectors: []` in scrub config — dive legs hard-cut at seams (`shared/seam-playback-contract.md`).
@@ -43,7 +44,7 @@ Authorization: Bearer $KIE_API_KEY
     "last_frame_url": "https://.../frame-b.png",
     "resolution": "480p",
     "aspect_ratio": "16:9",
-    "duration": 4,
+    "duration": 5,
     "generate_audio": false,
     "nsfw_checker": false
   }
@@ -63,8 +64,10 @@ Also ask **куда вставляется** блок (`insert_placement`) if un
 
 ### duration
 
-- Product range: **4–8** seconds.
-- **Default:** `4`.
+- Product range: **4–15** seconds.
+- **No default.** Duration is mandatory and is chosen by the Director when designing the journey (per-leg `duration_sec` in the Transition plan — режиссёрское решение).
+- Complex morphs often need **8–12**.
+- Resolve order: CLI `--duration` → `video_durations[leg]` → `video_duration`. If none is set — configuration error, not a fallback default.
 
 ### aspect_ratio
 
@@ -103,12 +106,21 @@ KIE_FILE_UPLOAD_BASE=https://kieai.redpandaai.co
   "media_aspect_ratio": "16:9",
   "insert_placement": "hero-below-nav",
   "video_resolution": "480p",
-  "video_duration": 4,
-  "frames": null
+  "video_duration": 6,
+  "video_durations": [4, 8, 10],
+  "frames": 6,
+  "playback_chain": [1, 2, 3, 4],
+  "reserve": [5, 6]
 }
 ```
 
-`frames` = M — задаётся после Journey / Gate Budget (`3`, `6` или `9` под проект), не по умолчанию в шаблоне.
+| Field | Role |
+|-------|------|
+| `frames` | M — задаётся после Journey / Gate Pitch (`3`, `6` или `9`) |
+| `playback_chain` | Optional prefix `[1..K]`; omit → K=M. Legs = K−1 |
+| `reserve` | Optional `[K+1..M]` when chain is a proper prefix of M |
+| `video_duration` | Scalar fallback for all legs |
+| `video_durations` | Optional per-leg list (index = leg); overrides scalar when CLI unset |
 
 ## Scripts
 
@@ -116,7 +128,7 @@ KIE_FILE_UPLOAD_BASE=https://kieai.redpandaai.co
 |--------|------|
 | `scripts/kie_common.py` | auth + poll |
 | `scripts/kie_file_upload.py` | Official Kie CDN upload → HTTPS `fileUrl` |
-| `scripts/video_frame_chain.py` | Resolve start/end paths + ffmpeg last-frame extract |
+| `scripts/video_frame_chain.py` | Resolve start/end paths + ffmpeg last-frame extract + `playback_chain` |
 | `scripts/extract_last_frame.py` | CLI: MP4 → PNG last frame |
 | `scripts/kie_seedance_2_mini.py` | create + download leg (canonical, chained) |
 | `scripts/encode_scrub_clips.py` | ffmpeg scrub-friendly encodes |

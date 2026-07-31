@@ -17,3 +17,5 @@ description: Confirm panel frames from generate_storyboard_panels; do not re-sli
 ## Legacy only
 
 `slice_storyboard.py` — только если board **без** `panels.json` и нужно аварийно нарезать; скрипт сам валится, если crop ≠ `media_aspect_ratio`. Предпочтительный ремонт: перегенерировать панели через `generate_storyboard_panels.py`.
+
+Fragment: `fragments/slicer.md` + Errors & Fixes + `incident_report: none|…`.

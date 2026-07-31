@@ -39,12 +39,38 @@ is_background: false
 **Task**(`scroll-world-journey`) — единый мир + **`## Transition plan`** на каждый leg + Keyframe map + Russian overlay copy + M.
 Без Transition plan дальше не идём.
 
-### 3. СТОП — бюджет
+### 3. СТОП — питч путешествия (до раскадровки)
 
-Покажи оценку по-русски: например «M={N} → {N} панелей Kie gpt-image-2 (2K) + {N−1} видео Seedance» (N из Journey: 3, 6 или 9). Кратко озвучь типы переходов из Transition plan. Жди «ок, генерируй». Write `04-budget.md`.
+После Journey обязательны:
+
+- `03-journey.md` с **`## Transition plan`**
+- `04-journey-pitch.md` — простой русский питч для пользователя
+
+**STOP:** покажи пользователю текст из `04-journey-pitch.md` **как есть** (verbatim, plain Russian). Без жаргона M / Kie / Seedance в сообщении пользователю.
+
+После явного **«Утвердить»** (внутреннее, не основной текст пользователю) напиши `04-budget.md`:
+
+- M ∈ {3, 6, 9}, K (prefix), reserve
+- per-leg `duration_sec` (обязателен; диапазон продукта **4–15**; выбирает Director при проектировании journey — режиссёрское решение, дефолта нет)
+- оценка gens = **M** панелей + **(K − 1)** видео
+
+Обнови `project.meta.json` (также после «Утвердить»): `frames=M`; `playback_chain` / `reserve`; `video_durations` если есть в journey.
+
+Варианты пользователю (русское название + пояснение):
+
+```text
+A) Утвердить
+   Можно генерировать раскадровку.
+
+B) Поправить
+   Вы правите замысел → снова Journey → снова покажем питч.
+```
+
+**Нельзя** стартовать Storyboard без явного «Утвердить».
 
 ### 4. Раскадровка
 
+Блокер: нет утверждённого питча / нет `04-journey-pitch.md`.
 Блокер: нет **`media_aspect_ratio`** в `project.meta.json` — вернуть Intake.
 Блокер: нет `KIE_API_KEY`.
 
@@ -63,15 +89,15 @@ is_background: false
 - формат кадра (16:9 / 9:16 / …) — если пропустили на intake;
 - куда вставляем блок;
 - размер: **480p** (по умолчанию) или **720p** (крупный блок).
-`video_resolution` default **480p**, `video_duration` default **4** (4–8).
+`video_resolution` default **480p**; длительность ноги — обязательный `duration_sec` из journey / `video_durations` (диапазон **4–15**, дефолта нет; если не задана нигде — ошибка конфигурации).
 Запиши в meta, затем **Task**(`scroll-world-video`) leg 0: Seedance `bytedance/seedance-2-mini`.
 Покажи. Спроси: «Нравится / правки камеры или трансформации?»
-Re-gen → новый NNN-leg. При OK — leg 1, 2, … **по порядку**.
+Re-gen → новый NNN-leg. При OK — leg 1, 2, … **по порядку** (число клипов = **K − 1** по `playback_chain`).
 При re-gen leg `k` — перегенери legs `k+1…`.
 
 ### 7. Encode + overlays + Builder
 
-**Task**(`scroll-world-encoder`) → **Task**(`scroll-world-builder`) (`encode_scrub_clips.py` + `build_scrub_media.py` + `build_overlays_from_plan.py` + scrub-engine; stills from video, not storyboard — `shared/scrub-still-contract.md`, **`shared/seam-playback-contract.md`**)
+**Task**(`scroll-world-encoder`) (`encode_scrub_clips.py`) → **Task**(`scroll-world-builder`) (`build_scrub_media.py` + `build_overlays_from_plan.py` + scrub-engine; stills from video, not storyboard — `shared/scrub-still-contract.md`, **`shared/seam-playback-contract.md`**)
 
 ### 8. QA
 

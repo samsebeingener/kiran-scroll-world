@@ -15,7 +15,11 @@
 - **Aspect mismatch** — panels and Seedance legs must share `media_aspect_ratio`; ask on intake (`shared/media-format-contract.md`).
 - **9:16 parallel chain** — no second chain in another aspect; one `media_aspect_ratio` per project.
 - **Architecture B** — connectors out of scope v1; use sequential first/last legs.
-- **Gate skip** — never generate all videos before Gate Storyboard + Gate First Video.
+- **Gate skip** — never generate storyboard before plain pitch approve (`04-journey-pitch.md`); never generate all videos before Gate Storyboard + Gate First Video.
+- **Skip plain pitch gate** — do not replace user-facing pitch with M/Kie/Seedance budget jargon; show `04-journey-pitch.md` verbatim; keep `04-budget.md` internal.
+- **Sparse playback_chain** — forbidden; must be contiguous prefix `[1..K]` with K≤M (no gaps / non-prefix sets).
+- **Paste prompt_snippet into journey** — journey uses codes / `duration_sec` / Russian pitch; do not dump EN registry `prompt_snippet` into `03-journey.md` or pitch.
+- **Hard-block 4s transforms** — if `duration_sec` below registry comfort: WARN + adapt mechanic/prompt; never refuse generation solely for 4s.
 - **gpt-image-2 4K traps** — `1:1` cannot be 4K (script falls back to 2K).
 - **Re-slice after panels** — if `*.panels.json` exists, do not run `slice_storyboard.py` (gutters shrink panels).
 - **Seam quality** — first/last via prompt may drift; always Gate First Video; surgical re-prompt before full chain.

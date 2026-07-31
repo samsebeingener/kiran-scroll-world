@@ -6,15 +6,24 @@
 
 Нужна режиссёрская работа: **один непрерывный мир**, понятный путь камеры и явная трансформация объектов между keyframes.
 
+## Связанные реестры
+
+| Файл | Роль |
+|------|------|
+| `shared/camera-movement-registry.md` | Конкретные ходы камеры (`id` / `name_ru` / `for_journey`). Journey пишет **ids** в `camera_moves`; **не** копирует `prompt_snippet` (это Video). |
+| `shared/object-transform-registry.md` | Механики смены объекта (`object_transform_code`). Timing **мягкий**: `comfort_sec` / `warn_below_sec` — рекомендация; **4s не хард-блок**. |
+
+Жанровый `type` из каталога ниже ≠ код камеры из camera registry ≠ object mechanic. На leg сочетают все три слоя.
+
 ## Роли
 
 | Кто | Что делает |
 |-----|------------|
-| **Journey (дизайнер-режиссёр)** | Из текстов brief строит единую визуальную систему + **план переходов** между каждыми соседними keyframes |
+| **Journey (дизайнер-режиссёр)** | Единый мир + **Board & playback** (M/K) + **план переходов** только для текущей цепи (K−1 legs) + plain-RU pitch |
 | **Storyboard** | Рисует contact sheet как **позиции одной камеры** в одном мире (не набор несвязанных открыток с общей палитрой) |
-| **Video** | Пишет **богатый** English prompt по плану перехода; mid-leg move обязателен и конкретен |
+| **Video** | Пишет **богатый** English prompt по плану перехода; mid-leg move обязателен и конкретен; вставляет `prompt_snippet` камеры |
 
-Director **не** пропускает Storyboard/Video, если в `03-journey.md` нет секции `## Transition plan`.
+Director **не** пропускает Storyboard/Video, если в `03-journey.md` нет секций `## Board & playback` и `## Transition plan`.
 
 ## Каталог типов перехода (выбрать 1 на leg)
 
@@ -35,19 +44,37 @@ Director **не** пропускает Storyboard/Video, если в `03-journey
 
 Можно комбинировать **primary + secondary** (например `drone_flythrough` + лёгкий `morph_transform` на props).
 
+## Board & playback (перед Transition plan)
+
+В `03-journey.md` → `## Board & playback`:
+
+- **M** ∈ {3, 6, 9} — размер доски (все панели storyboard)
+- **K** ≤ M — длина текущей playback-цепочки; **K = legs_now + 1**
+- **playback_chain** = PREFIX panels `[1..K]`
+- **reserve** = TAIL panels `[K+1..M]`
+- **legs_now** = K − 1 (видео сейчас; **не** всегда M − 1)
+
+`## Transition plan` покрывает **только** legs текущей цепи (K−1), не reserve.
+
 ## Обязательные поля на каждый leg
 
-В `03-journey.md` → `## Transition plan`:
+В `03-journey.md` → `## Transition plan` (только playback legs):
 
 ```markdown
 ### Leg 0 — KF1 → KF2
 - **type:** drone_flythrough + morph_transform
+- **duration_sec:** 8
+- **camera_moves:** [helicopter_style_aerial, pan_right, slow_zoom_in]
+- **object_transform_code:** plastic_morph
 - **camera:** …
 - **world_continuity:** что общего в пространстве (земля, ось, landmark)
 - **object_transform:** что именно превращается во что
 - **forbidden:** simple crossfade / hard cut / random teleport
-- **video_prompt_seed (EN):** 2–4 sentences for the video agent
+- **video_prompt_seed (EN):** 6–12 sentences; beats match duration_sec
 ```
+
+- `camera_moves`: 1–3 **id** из camera-movement-registry (`for_journey` only в journey).
+- `object_transform_code`: code из object-transform-registry; при коротком `duration_sec` адаптируй по `on_short_clip`, не блокируй 4s.
 
 ## Правила единого мира (storyboard)
 

@@ -15,16 +15,23 @@ Generating a contact sheet at a nearest board ratio then equal-grid slicing yiel
 | `storyboard_resolution` | `2K` (default) \| `4K` — per-panel Kie gpt-image-2 budget |
 | `video_resolution` | `480p` (default) \| `720p` — Seedance / encode short edge |
 | `insert_placement` | Where the block sits on the page |
-| `frames` | **M** — число keyframe-панелей; задаётся на **Journey / Gate Budget** под задачу проекта (не хардкод в коде) |
+| `frames` | **M** — число keyframe-панелей; задаётся на **Journey / Gate Pitch** под задачу проекта (не хардкод в коде) |
 
 Legacy alias: `video_aspect_ratio` → read as `media_aspect_ratio` if the latter is missing.
 
-## M (frames) — выбор под проект
+## M / K — доска и playback
 
-- Допустимые значения в v1: **M ∈ {3, 6, 9}** (сетки 3×1, 3×2, 3×3).
-- **M не зашит в коде** — Director/Journey предлагают M по длине пути, числу overlay-сцен и бюджету Kie; пользователь подтверждает на Gate Budget.
+| Символ | Смысл |
+|--------|--------|
+| **M** | Размер доски (число keyframe-панелей). **M ∈ {3, 6, 9}** (сетки 3×1, 3×2, 3×3). |
+| **K** | Длина **текущей** playback-цепочки. **K ≤ M**. Панели PREFIX `[1..K]`. |
+| **reserve** | Хвост доски TAIL `[K+1..M]` — на продолжение, без видео сейчас. |
+| **legs_now** | Число видео-ног **сейчас** = **K − 1** (не всегда M − 1). |
+
+- **M не зашит в коде** — Journey: сначала оценка ног + `duration_sec` → K = legs+1 → M = min∈{3,6,9} с M≥K; пользователь подтверждает на Gate Pitch.
 - До approve бюджета в `project.meta.json` может быть `"frames": null` (см. `prepare_project_folder.ps1`).
-- Видео-ног = **M − 1**.
+- В meta после Journey: `frames` = M; рекомендуется также `playback_chain` / K (см. `shared/memory-protocol.md`).
+- Полный прогон «вся доска в видео» — частный случай **K = M**, тогда legs = M − 1.
 
 ## Kie API vs локальная сшивка (важно)
 
@@ -81,7 +88,7 @@ Helper: `scripts/media_format.py`.
 }
 ```
 
-`frames` = M — выставляется после Journey / Gate Budget (`3`, `6` или `9` под задачу). Prefer `storyboard_resolution: "4K"` when the user asks.
+`frames` = M — выставляется после Journey / Gate Pitch (`3`, `6` или `9` под задачу). Prefer `storyboard_resolution: "4K"` when the user asks.
 
 ## Pitfalls
 

@@ -8,7 +8,7 @@ The model has **no** memory of prior tasks, leg indices, MP4 files, storyboard p
 
 | Layer | Who | Content |
 |-------|-----|---------|
-| **Which images** | `video_frame_chain.py` + `kie_seedance_2_mini.py` | leg 0: storyboard KF1→KF2; leg i>0: ffmpeg last frame of leg i−1 → storyboard KFi+2 |
+| **Which images** | `video_frame_chain.py` + `kie_seedance_2_mini.py` | leg 0: storyboard `playback_chain[0]`→`[1]` (default KF1→KF2); leg i>0: ffmpeg last frame of leg i−1 → storyboard `playback_chain[i+1]` (default KFi+2) |
 | **What happens between them** | `05-image-prompts/*-leg-*.md` → Kie `prompt` | Pure visual/cinematic English only |
 
 Never explain the pipeline inside the Kie prompt.
@@ -57,5 +57,5 @@ The video agent **rewrites** that into `05-image-prompts/*-leg-*.md` with **only
 1. Prompt **≥ 800** chars (target **1 200–4 000**); all template sections filled with concrete visuals
 2. Describes motion between **these two PNGs** — not how we chose them
 3. No filenames, leg numbers, or storyboard references
-4. Timed camera beats match `duration` (4s default)
+4. Timed camera beats match `duration` (**4–15** s; required per leg from the journey — no default; complex morphs often 8–12). Prefer camera-path snippets from the journey / camera registry so beats land on the real clip length
 5. Ending: slow forward drift in final ~0.5s — no “next leg”

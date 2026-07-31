@@ -12,6 +12,8 @@ It is rendered as **DOM overlays** driven by scroll progress — same idea as sc
 | title (headline) | yes |
 | body | yes |
 | cta | last section only |
+| eyebrow | optional — короткая надзаголовочная строка (label над title) |
+| tags | optional — список коротких тегов/чипов сцены (`string[]`) |
 
 ## Runtime file
 
@@ -36,8 +38,10 @@ python scripts/build_overlays_from_plan.py --project <project-path>
   "sections": [
     {
       "id": "scene-01",
+      "eyebrow": "…",
       "title": "…",
       "body": "…",
+      "tags": ["…", "…"],
       "scroll": 1.6,
       "linger": 0.45,
       "accent": "#8FB98A"

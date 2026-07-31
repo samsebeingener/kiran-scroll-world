@@ -1,22 +1,29 @@
-# Storyboard board prompt template
+# Storyboard panel prompt template (per-panel)
 
-Replace tokens. No text inside cells. Continuity > pretty separate postcards.
+One panel = one Kie `gpt-image-2-text-to-image` call at exact `media_aspect_ratio` via `generate_storyboard_panels.py`. **No contact sheet / grid / board layout in the prompt** — the stitched board is local review math only (`shared/storyboard-generation-contract.md`, `shared/media-format-contract.md`).
+
+Replace tokens. No text inside the frame. Continuity > pretty separate postcards.
 
 ```text
 STYLE: {{STYLE_PREAMBLE}}
 
 ONE CONTINUOUS MINIATURE WORLD (CRITICAL):
-All panels are keyframes along ONE camera flight through the SAME diorama territory — not separate unrelated postcards that only share a color palette.
-Shared ground plane, shared light, shared material language. Panel N is further along the same flight path than panel N-1. Keep a readable continuity landmark or path axis between neighbors.
+This frame is keyframe {{PANEL_INDEX}} of {{M}} along ONE camera flight through the SAME diorama territory — not a standalone postcard that only shares a color palette.
+Shared ground plane, shared light, shared material language with every other keyframe of this journey.
 
-Contact sheet storyboard with {{M}} panels in a {{COLS}}x{{ROWS}} grid on one wide image.
-Each panel is a {{CELL_ASPECT}} keyframe. Order L→R, T→B:
+THIS PANEL:
+{{KF_BEAT}} — camera position on the path: {{KF_CAMERA}}.
+Continuity landmark carried from the previous keyframe: {{KF_FROM_PREV}}.
+Transition intent into the next keyframe: {{LEG_TYPE}}.
 
-1) {{KF1_BEAT}} — camera position: {{KF1_CAMERA}}. Continuity seed: {{KF1_LANDMARK}}.
-2) {{KF2_BEAT}} — further along the path: {{KF2_CAMERA}}. Must still read leftover of KF1: {{KF2_FROM_PREV}}. Transition intent into this frame: {{LEG0_TYPE}}.
-…
-{{M}}) {{KFM_BEAT}} — …
-
-Between panels the implied motion must match the journey Transition plan (drone / push-in / morph / track / etc.).
-No text, no letters, no numbers, no logos, no watermarks.
+OUTPUT (single frame):
+- Exactly one {{CELL_ASPECT}} keyframe (`media_aspect_ratio`), full-bleed scene.
+- No grid, no contact sheet, no panel borders, no gutters, no collage layout.
+- No text, no letters, no numbers, no logos, no watermarks.
 ```
+
+Notes for the agent (not for Kie):
+
+- `generate_storyboard_panels.py` appends the per-panel OUTPUT CONSTRAINT itself — keep this template single-frame.
+- Style preamble must be **identical** across all M panels (`shared/storyboard-generation-contract.md`).
+- Between panels the implied motion must match the journey Transition plan (drone / push-in / morph / track / etc.).
