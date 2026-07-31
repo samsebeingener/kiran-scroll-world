@@ -10,9 +10,9 @@
 
 - **Сессионный intake** — `/scroll-world-start`: тема мира, бренд, стиль, формат кадра (`media_aspect_ratio`), куда встроить блок
 - **Journey + Transition plan** — единый мир, типы переходов между кадрами, русские overlay-тексты
-- **Storyboard** — **M ∈ {3, 6, 9}** (выбор на Journey под задачу) панелей через Kie `gpt-image-2-text-to-image` @ **2K** / **4K**; каждая панель = точный `media_aspect_ratio` (не aspect сшитого board)
+- **Storyboard** — **M ∈ {3, 6, 9}** (выбор на Journey под задачу) панелей через Kie `gpt-image-2-text-to-image` @ **2K** / **4K**: **одна генерация** board с сеткой M панелей (3×1 / 3×2 / 3×3), затем локальная нарезка в отдельные кадры; hard aspect gate гарантирует соответствие каждого кадра `media_aspect_ratio`
 - **Video legs** — Kie `bytedance/seedance-2-mini` (`first_frame_url` + `last_frame_url`), default **480p**; длительность каждого leg **4–15 с** — режиссёрское решение в journey (дефолта нет)
-- **Seam gate** — `check_seam_compatibility.py` после encode: MAE между соседними legs, BLOCKER при плохих швах
+- **Seam gate** — `check_seam_compatibility.py` после encode: анализирует 5 последних и 5 первых кадров соседних legs и стыкует по наименьшему различию (MAE), BLOCKER при плохих швах
 - **Kie resilience** — retry с re-submit при транзиентных ошибках API (429/5xx/501), пауза 5 с между попытками
 - **DOM overlays** — русский copy в `assets/overlays.json` (можно править без регенерации медиа)
 - **scrub-engine.js** — portable scroll-scrub (upstream [oso95/scroll-world](https://github.com/oso95/scroll-world), MIT)
@@ -66,7 +66,7 @@ copy .env.example .env   # KIE_API_KEY
   → Intake (media_aspect_ratio, brand)
   → Journey (+ Transition plan + 04-journey-pitch.md)
   → [Gate Pitch — plain Russian approve]
-  → Storyboard (Kie gpt-image-2 panels)
+  → Storyboard (Kie gpt-image-2 — одна генерация board + slice)
   → [Gate Storyboard]
   → [Gate Video Settings]
   → Video legs (Seedance 2 Mini, chain 0→1→…)

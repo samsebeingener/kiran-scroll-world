@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Media aspect ratio helpers — panels @ cell aspect, encode pixels.
+"""Media aspect ratio helpers — one board generation + slice, encode pixels.
 
 Storyboard and Seedance share one cell aspect from project.meta.json → media_aspect_ratio.
-Panels are generated via Kie gpt-image-2-text-to-image (2K/4K); video via seedance-2-mini.
+Storyboard: ONE Kie gpt-image-2-text-to-image board (grid of M cells), then local slice.
+Video: seedance-2-mini.
 """
 
 from __future__ import annotations
@@ -20,7 +21,7 @@ STORYBOARD_RESOLUTIONS = frozenset({"2K", "4K"})
 
 FRAME_COUNTS = frozenset({3, 6, 9})
 
-# (rows, cols) for contact-sheet layout after panels_then_stitch
+# (rows, cols) for the one-generation board grid (board_then_slice)
 GRID_BY_M: dict[int, tuple[int, int]] = {
     3: (1, 3),
     6: (2, 3),
@@ -71,7 +72,7 @@ def resolve_frames_count(meta: dict[str, Any], cli_frames: int | None) -> int:
         if raw is None:
             raise SystemExit(
                 "frames (M) not set. Set project.meta.json frames (3|6|9) after Journey / "
-                "Gate Budget, or pass --frames."
+                "Gate Pitch, or pass --frames."
             )
         m = int(raw)
     if m not in FRAME_COUNTS:
@@ -104,10 +105,12 @@ def resolve_cell_aspect(cli_value: str | None, meta: dict[str, Any], *, required
 
 
 def board_aspect_ratio(m: int, cell_aspect: str) -> str:
-    """Pixel aspect of stitched review board after local PIL stitch (informational only).
+    """Pixel aspect of the one-generation board (grid of M cells).
 
-    Never sent to Kie — API accepts only per-panel ratios (e.g. 16:9), not composite
-    board aspects like 8:3 (M=6, cell 16:9, grid 3×2). See media-format-contract.md.
+    Used to (a) pick the nearest Kie `aspect_ratio` for the single board request
+    and (b) verify the slice grid. May not exist in the Kie whitelist (e.g. `8:3`
+    for M=6, cell 16:9, grid 3×2) — then the script picks a wider whitelist ratio
+    and `slice_storyboard.py` centre-crops the excess before slicing.
     """
     if m not in GRID_BY_M:
         raise ValueError(f"M must be one of {sorted(GRID_BY_M)}; got {m}")
@@ -134,8 +137,30 @@ def resolve_storyboard_resolution(meta: dict[str, Any], cli: str | None = None) 
 
 
 def storyboard_strategy() -> str:
-    """Only production path: Kie gpt-image-2 panels at cell aspect, then local stitch."""
-    return "panels_then_stitch"
+    """Only production path: ONE Kie gpt-image-2 board generation, then local slice."""
+    return "board_then_slice"
+
+
+def choose_request_aspect(cols: int, rows: int, cell_aspect: str, supported: set[str] | frozenset[str]) -> str:
+    """Pick the Kie whitelist aspect for the single board request.
+
+    Rule: smallest whitelist ratio with width/height >= board ratio, so the slice
+    only ever centre-crops excess width/height, never invents pixels. SystemExit
+    (via ValueError) if nothing is wide/tall enough.
+    """
+    cw, ch = parse_aspect(cell_aspect)
+    target = (cols * cw) / (rows * ch)
+    candidates = sorted(
+        ((aspect_to_float(a), a) for a in supported if aspect_to_float(a) >= target),
+        key=lambda t: t[0],
+    )
+    if not candidates:
+        raise ValueError(
+            f"No Kie aspect_ratio covers board grid {cols}x{rows} of {cell_aspect} cells "
+            f"(board ratio {target:.3f}). Use a larger M grid (6 or 9) or a different "
+            "media_aspect_ratio, then regenerate the board."
+        )
+    return candidates[0][1]
 
 
 def gpt_image_resolution(cell_aspect: str, preferred: str = "2K") -> str:

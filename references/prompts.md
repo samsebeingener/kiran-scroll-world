@@ -13,15 +13,16 @@
 1. Gate Pitch: show `04-journey-pitch.md` verbatim (plain Russian); internal budget M panels + (K−1) videos; approve before storyboard
 2. Gate Video Settings (if unset): insert place + resolution before first createTask; duration 4–15 (required per-leg from journey — no default)
 
-## Storyboard panel prompt shape
+## Storyboard board prompt shape
 
 ```text
-<STYLE PREAMBLE, identical>. Continuous fly-through keyframes.
+Contact sheet storyboard with {M} panels in a {COLS}x{ROWS} grid on one image.
 Each panel is a `{media_aspect_ratio}` keyframe of one camera journey.
+Continuity landmark between neighbors; transition intent from the journey Transition plan.
 No text, letters, numbers, logos, watermarks.
 ```
 
-CLI appends per-panel OUTPUT CONSTRAINT via `generate_storyboard_panels.py`.
+Шаблон: `templates/storyboard-prompt.template.md`; в Kie уходит **один** запрос через `generate_storyboard_panels.py`.
 
 ## Video leg prompt shape (Seedance 2.0 Mini)
 

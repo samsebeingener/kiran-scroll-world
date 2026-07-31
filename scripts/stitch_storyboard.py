@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Stitch panel PNGs (exact cell aspect) into a contact-sheet board for Gate review.
+"""Stitch frame PNGs (exact cell aspect) into a contact-sheet board (utility only).
 
-Output board pixel aspect is derived from M × grid × cell aspect (informational).
-Never use board aspect as Kie gpt-image-2 aspect_ratio — API only accepts per-panel ratios.
+Not used in production: the board is born from ONE Kie generation in
+generate_storyboard_panels.py and sliced by slice_storyboard.py. This script
+remains only as a manual utility (e.g. re-assemble a review sheet from frames).
 """
 
 from __future__ import annotations

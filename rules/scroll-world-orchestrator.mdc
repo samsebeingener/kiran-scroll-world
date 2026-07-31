@@ -79,7 +79,7 @@ Brief → Intake → Journey → [Gate Pitch: 04-journey-pitch.md]
 - Пропуск plain pitch gate (технический бюджет вместо питча пользователю)
 - Sparse / non-prefix `playback_chain` (только contiguous `[1..K]`, K≤M)
 - Slideshow-промпты (`smooth morph` / голое `fly forward`) без camera path и object_transform
-- Re-slice stitched board когда есть `*.panels.json`
+- Re-slice board вне repair-сценария (slice уже делает генератор; повторный slice — только repair)
 
 ### Fixic
 

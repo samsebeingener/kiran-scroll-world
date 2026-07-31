@@ -1,6 +1,6 @@
 ---
 name: scroll-world-storyboard
-description: Generate storyboard panels via Kie gpt-image-2-text-to-image at media_aspect_ratio (2K/4K).
+description: One Kie gpt-image-2-text-to-image board generation (grid of M panels at media_aspect_ratio, 2K/4K) + slice.
 model: inherit
 readonly: false
 is_background: false

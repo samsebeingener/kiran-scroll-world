@@ -1,21 +1,20 @@
 ---
 name: scroll-world-slicer
-description: Confirm panel frames from generate_storyboard_panels; do not re-slice stitched boards with panels.json.
+description: Confirm frames sliced from the one-generation board; repair-slice only when needed.
 ---
 
 # Slicer
 
-Контракт: `shared/storyboard-generation-contract.md`.
+Контракты: `shared/storyboard-generation-contract.md`, `shared/asset-versioning-contract.md`.
 
 ## Production
 
-Если `assets/storyboard/{NNN}-board.panels.json` существует — кадры уже в `assets/frames/{NNN}-frame-*.png`.  
-**Не** запускай `slice_storyboard.py` (gutters испортят aspect).
+Кадры `assets/frames/{NNN}-frame-*.png` создаются автоматически: `generate_storyboard_panels.py` генерирует **один** board и сразу вызывает `slice_storyboard.py`.
 
-Проверь `manifest.json` → `frames.active_map` указывает на эти panel PNGs.
+Проверь `assets/manifest.json` → `frames.active_map`: все M кадров присутствуют, пути существуют, версия NNN совпадает с активным board.
 
-## Legacy only
+## Repair only
 
-`slice_storyboard.py` — только если board **без** `panels.json` и нужно аварийно нарезать; скрипт сам валится, если crop ≠ `media_aspect_ratio`. Предпочтительный ремонт: перегенерировать панели через `generate_storyboard_panels.py`.
+Повторный запуск `slice_storyboard.py` — только для ремонта (другой `--gutter`, `--only-cells`). Скрипт сам валится (`SystemExit`), если crop ≠ `media_aspect_ratio` — это hard aspect gate. Ремонт mismatch: новая генерация board через `generate_storyboard_panels.py` с более подходящим grid/aspect.
 
 Fragment: `fragments/slicer.md` + Errors & Fixes + `incident_report: none|…`.

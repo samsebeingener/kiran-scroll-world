@@ -86,10 +86,10 @@ Example (M=6, video through KF1→KF4, reserve KF5–KF6):
 - `scripts/asset_versions.py` — next version / list / update manifest helpers (importable + CLI)
 - `scripts/video_frame_chain.py` — chain resolve + ffmpeg extract
 - `scripts/extract_last_frame.py` — manual last-frame extract
-- `generate_storyboard_panels.py` — Kie gpt-image-2 panels → `{NNN}-frame-*.png` + stitch board + `active_map`
+- `generate_storyboard_panels.py` — Kie gpt-image-2: ОДИН board → `{NNN}-board.png` → slice в `{NNN}-frame-*.png` + `active_map`
 - `kie_seedance_2_mini.py` — legs **по порядку** 0→1→…; пишет `{NNN}-leg-*`, не перезаписывает предыдущие
 - `encode_scrub_clips.py` — scrub-friendly encode
-- `slice_storyboard.py` — legacy only; refuses boards with `*.panels.json`
+- `slice_storyboard.py` — board→frames с hard aspect gate (вызывается генератором; отдельный запуск — repair)
 
 ## Запрещено
 

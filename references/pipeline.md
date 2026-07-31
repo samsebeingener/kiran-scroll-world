@@ -1,12 +1,12 @@
 # Scroll World — pipeline (active)
 
-Generators: **Kie** `gpt-image-2-text-to-image` (panels) + **Kie** `bytedance/seedance-2-mini` (video).
+Generators: **Kie** `gpt-image-2-text-to-image` (одна генерация board) + **Kie** `bytedance/seedance-2-mini` (video).
 
 ## 1. Storyboard
 
 1. Next version: `python scripts/asset_versions.py next --dir <proj>/assets/storyboard --glob "*-board.png"`
-2. Prompt → `05-image-prompts/{NNN}-storyboard.md`
-3. Kie panels:
+2. Prompt → `05-image-prompts/{NNN}-storyboard.md` (шаблон `templates/storyboard-prompt.template.md`, contact sheet grid)
+3. Kie board + slice (всё внутри одного скрипта):
 
 ```bash
 python scripts/generate_storyboard_panels.py \
@@ -15,13 +15,13 @@ python scripts/generate_storyboard_panels.py \
 # --resolution 4K  if user requested 4K; default 2K from meta storyboard_resolution
 ```
 
-Writes `assets/frames/{NNN}-frame-*.png` + stitched `assets/storyboard/{NNN}-board.png`.
+Пишет `assets/storyboard/{NNN}-board.png` (одна генерация) и нарезает в `assets/frames/{NNN}-frame-*.png` (hard aspect gate).
 
 4. Gate Storyboard — if reject / regenerate → новый NNN (старый файл остаётся).
 
 ## 2. Frames
 
-If `*.panels.json` exists — use panel PNGs as-is (`active_map`). Do **not** re-slice the stitched board.
+Кадры уже нарезаны генератором (`active_map` в `manifest.json`). Повторный `slice_storyboard.py` — только repair.
 
 ## 3. Video legs (Seedance 2.0 Mini + chain)
 

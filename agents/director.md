@@ -75,13 +75,13 @@ B) Поправить
 Блокер: нет `KIE_API_KEY`.
 
 Проверь наличие `## Transition plan` в `03-journey.md`.
-**Task**(`scroll-world-storyboard`) — Kie `generate_storyboard_panels.py`, cell aspect = meta; panels + `{NNN}-board.png`.
+**Task**(`scroll-world-storyboard`) — Kie `generate_storyboard_panels.py`: ОДНА генерация board (сетка M панелей), затем автоматическая нарезка в `assets/frames/{NNN}-frame-*.png`.
 Покажи board. Спроси по-русски: «Ок / перегенерировать панели?»
 При пересоздании — новый префикс; `001` не удалять.
 
 ### 5. Кадры
 
-**Task**(`scroll-world-slicer`) — подтвердить `active_map` на panel PNGs; **не** slice если есть `*.panels.json`.
+**Task**(`scroll-world-slicer`) — подтвердить `active_map` на нарезанных frame PNGs (slice уже сделан генератором).
 
 ### 6. Настройки видео + первое видео + СТОП
 

@@ -21,7 +21,7 @@
 - **Paste prompt_snippet into journey** — journey uses codes / `duration_sec` / Russian pitch; do not dump EN registry `prompt_snippet` into `03-journey.md` or pitch.
 - **Hard-block 4s transforms** — if `duration_sec` below registry comfort: WARN + adapt mechanic/prompt; never refuse generation solely for 4s.
 - **gpt-image-2 4K traps** — `1:1` cannot be 4K (script falls back to 2K).
-- **Re-slice after panels** — if `*.panels.json` exists, do not run `slice_storyboard.py` (gutters shrink panels).
+- **Re-slice без нужды** — кадры нарезаются автоматически внутри `generate_storyboard_panels.py`; повторный `slice_storyboard.py` — только repair. Aspect mismatch при slice — ремонт новой генерацией board, не ослаблением gate.
 - **Seam quality** — first/last via prompt may drift; always Gate First Video; surgical re-prompt before full chain.
 - **Single-frame seam check** — never compare only the final frame of leg `i` to
   the first frame of leg `i+1`. After every encode run
