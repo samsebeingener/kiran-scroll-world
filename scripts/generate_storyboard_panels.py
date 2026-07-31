@@ -1,5 +1,13 @@
 #!/usr/bin/env python3
-"""Generate ONE storyboard board via Kie gpt-image-2-text-to-image, then slice.
+"""Generate ONE storyboard board via Kie gpt-image-2, then slice.
+
+Two backend modes (shared/storyboard-generation-contract.md):
+  - text-to-image (gpt-image-2-text-to-image) — default, no user references.
+  - image-to-image (gpt-image-2-image-to-image) — when the user supplied
+    storyboard reference images. Local files are first uploaded through the
+    Kie File Upload API (scripts/kie_file_upload.py) and the resulting HTTPS
+    fileUrls are passed as image input. The image-to-image endpoint/payload
+    follows the Kie docs for gpt-image-2-image-to-image (image urls input).
 
 The prompt file (05-image-prompts/{NNN}-storyboard.md, built from
 templates/storyboard-prompt.template.md) describes a contact sheet of M panels
@@ -17,6 +25,7 @@ from typing import Any
 
 from asset_versions import format_version, next_version, register_storyboard
 from kie_common import KieTaskClient
+from kie_file_upload import KieFileUploadClient
 from media_format import (
     board_aspect_ratio,
     choose_request_aspect,
@@ -30,7 +39,9 @@ from media_format import (
 )
 from slice_storyboard import slice_board
 
-MODEL = "gpt-image-2-text-to-image"
+MODEL_T2I = "gpt-image-2-text-to-image"
+MODEL_I2I = "gpt-image-2-image-to-image"
+MAX_REFERENCES = 8
 SUPPORTED = frozenset(
     {
         "1:1",
@@ -56,23 +67,51 @@ class GptImage2Client(KieTaskClient):
         prompt: str,
         aspect_ratio: str,
         resolution: str = "2K",
+        image_urls: list[str] | None = None,
         callback_url: str | None = None,
     ) -> str:
         if aspect_ratio not in SUPPORTED:
             raise ValueError(f"Unsupported aspect_ratio {aspect_ratio!r}")
         if aspect_ratio == "1:1" and resolution == "4K":
             raise ValueError("1:1 cannot use 4K")
-        payload: dict[str, Any] = {
-            "model": MODEL,
-            "input": {
-                "prompt": prompt,
-                "aspect_ratio": aspect_ratio,
-                "resolution": resolution,
-            },
+        model = MODEL_I2I if image_urls else MODEL_T2I
+        input_payload: dict[str, Any] = {
+            "prompt": prompt,
+            "aspect_ratio": aspect_ratio,
+            "resolution": resolution,
         }
+        # gpt-image-2-image-to-image: reference image urls as image input
+        # (endpoint/payload per Kie docs for gpt-image-2-image-to-image).
+        if image_urls:
+            input_payload["image_urls"] = image_urls
+        payload: dict[str, Any] = {"model": model, "input": input_payload}
         if callback_url:
             payload["callBackUrl"] = callback_url
         return self.create_task_raw(payload)
+
+
+def resolve_storyboard_references(
+    meta: dict[str, Any], cli_refs: list[Path] | None
+) -> list[Path]:
+    """CLI --reference wins; else meta.storyboard_references (local paths)."""
+    raw: list[str] = []
+    if cli_refs:
+        raw = [str(p) for p in cli_refs]
+    else:
+        meta_refs = meta.get("storyboard_references")
+        if isinstance(meta_refs, list):
+            raw = [str(p) for p in meta_refs if str(p).strip()]
+        elif isinstance(meta_refs, str) and meta_refs.strip():
+            raw = [meta_refs.strip()]
+    if len(raw) > MAX_REFERENCES:
+        raise SystemExit(
+            f"Too many storyboard references ({len(raw)} > {MAX_REFERENCES})"
+        )
+    paths = [Path(p).expanduser().resolve() for p in raw]
+    missing = [str(p) for p in paths if not p.is_file()]
+    if missing:
+        raise SystemExit(f"Storyboard reference file(s) not found: {missing}")
+    return paths
 
 
 def main() -> None:
@@ -85,6 +124,15 @@ def main() -> None:
     parser.add_argument("--resolution", default=None, help="2K (default) or 4K")
     parser.add_argument("--workspace", type=Path, default=None)
     parser.add_argument("--version", type=int, default=None, help="Force NNN version")
+    parser.add_argument(
+        "--reference",
+        type=Path,
+        action="append",
+        default=None,
+        help="Local storyboard reference image (repeatable). "
+        "Presence switches to gpt-image-2-image-to-image; files are uploaded "
+        "via the Kie File Upload API first. Overrides meta storyboard_references.",
+    )
     parser.add_argument("--gutter", type=int, default=2)
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
@@ -125,10 +173,14 @@ def main() -> None:
     ver_num = args.version or next_version(sb_dir, "*-board.png")
     ver = format_version(ver_num)
 
+    refs = resolve_storyboard_references(meta, args.reference)
+    model = MODEL_I2I if refs else MODEL_T2I
+
     print(
-        f"provider=kie model={MODEL} strategy=board_then_slice "
+        f"provider=kie model={model} strategy=board_then_slice "
         f"M={m} cell={cell_aspect} grid={cols}x{rows} board_aspect={board_ratio} "
-        f"request_aspect={request_aspect} resolution={resolution} version={ver}"
+        f"request_aspect={request_aspect} resolution={resolution} version={ver} "
+        f"references={len(refs)}"
     )
 
     if args.dry_run:
@@ -138,9 +190,18 @@ def main() -> None:
         )
         return
 
+    image_urls: list[str] | None = None
+    if refs:
+        uploader = KieFileUploadClient(workspace=args.workspace or project)
+        image_urls = []
+        for ref in refs:
+            url = uploader.upload_local(ref)
+            print(f"uploaded reference {ref.name} -> {url}")
+            image_urls.append(url)
+
     client = GptImage2Client(workspace=args.workspace or project)
-    print(f"createTask board {MODEL} aspect={request_aspect} res={resolution}")
-    task_id = client.create_image(prompt, request_aspect, resolution)
+    print(f"createTask board {model} aspect={request_aspect} res={resolution}")
+    task_id = client.create_image(prompt, request_aspect, resolution, image_urls=image_urls)
     print(f"taskId={task_id}")
     data = client.wait_for_task(task_id)
     urls = client.extract_result_urls(data)

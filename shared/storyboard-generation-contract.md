@@ -4,17 +4,26 @@ See **`shared/media-format-contract.md`** — panel aspect = `media_aspect_ratio
 
 ## Goal
 
-**ONE Kie generation** (`gpt-image-2-text-to-image`) of a single image containing a grid of **M keyframe panels**, then **local slice** into M frames at exact **`media_aspect_ratio`** (same as Seedance video), at **2K** (default) or **4K** (user request).  
+**ONE Kie generation** of a single image containing a grid of **M keyframe panels**, then **local slice** into M frames at exact **`media_aspect_ratio`** (same as Seedance video), at **2K** (default) or **4K** (user request).  
 **M ∈ {3, 6, 9}** — выбирается на Journey под задачу проекта (длина пути, overlay-сцены, бюджет), не фиксируется в коде.  
 Grids: 3 → 3×1, 6 → 3×2, 9 → 3×3.
 
-## Source (only)
+## Backend modes (two)
 
-| Backend | How |
-|---------|-----|
-| **Kie** `gpt-image-2-text-to-image` via `scripts/generate_storyboard_panels.py` | ONE board request (grid of M panels) → slice |
+| Backend | When |
+|---------|------|
+| **Kie** `gpt-image-2-text-to-image` (2K/4K) | **Default** — пользователь НЕ дал референсы для сториборда |
+| **Kie** `gpt-image-2-image-to-image` (2K/4K) | Пользователь дал референс(ы) для сториборда. Локальные файлы сначала загружаются через **Kie File Upload API** (`scripts/kie_file_upload.py`, docs.kie.ai/file-upload-api) → HTTPS `fileUrl` → передаются в запрос image-to-image как image input вместе с текстовым промптом |
 
-Requires `KIE_API_KEY`. Allowed image backends: `gpt-image-2-text-to-image` (production via `generate_storyboard_panels.py`); `gpt-image-2-image-to-image` (repair only). No other image generators in this repository.
+Оба режима: **ONE board request** (grid of M panels) → slice. Текстовый промпт обязателен в обоих режимах (в i2i референс задаёт стиль/композицию, промпт — сцену).
+
+Requires `KIE_API_KEY`. Allowed image backends: `gpt-image-2-text-to-image` and `gpt-image-2-image-to-image` via `scripts/generate_storyboard_panels.py`. No other image generators in this repository.
+
+## NO TEXT ON IMAGE (MANDATORY)
+
+**НИКАКОГО текста, букв, цифр, логотипов и водяных знаков на генерируемых изображениях — в ОБОИХ режимах (t2i и i2i).**
+Русский/брендовый текст накладывается позже отдельно через **DOM overlays** (`assets/overlays.json`), НИКОГДА через генерацию.
+Если на board/кадрах виден впечатанный текст — board бракуется и регенерируется (новый NNN).
 
 ## Prompt
 
@@ -23,9 +32,22 @@ Prompt = `templates/storyboard-prompt.template.md`, filled into `05-image-prompt
 - contact sheet of {{M}} panels in a {{COLS}}x{{ROWS}} grid on **one** image
 - per-panel tokens: beat / camera position / continuity landmark / from-prev leftover
 - ONE CONTINUOUS WORLD: one diorama territory, one camera flight, shared ground/light/materials — continuity runs across the whole board
-- no text, letters, numbers, logos, watermarks inside cells (Russian/brand copy = DOM overlays later)
+- **NO TEXT ON IMAGE (MANDATORY): no text, letters, numbers, logos, watermarks inside cells** (Russian/brand copy = DOM overlays later)
 
-**In Kie уходит ОДИН запрос** с этим промптом.
+**В Kie уходит ОДИН запрос** с этим промптом. В режиме i2i к запросу добавляются HTTPS URL референсов (см. Backend modes).
+
+## Storyboard references (meta)
+
+Режим выбирается по наличию референсов: CLI `--reference <path>` (повторяемый) или поле meta. Пример `project.meta.json`:
+
+```json
+{
+  "storyboard_references": []
+}
+```
+
+- `[]` или поле отсутствует → **text-to-image**
+- список локальных путей → **image-to-image** (upload через Kie File Upload API → `fileUrl`)
 
 ## Aspect ratios
 
@@ -51,6 +73,8 @@ python scripts/generate_storyboard_panels.py \
   --project <path> \
   --prompt-file 05-image-prompts/001-storyboard.md
 # optional: --resolution 4K   (or meta storyboard_resolution)
+# optional (i2i mode): --reference ref1.png --reference ref2.png
+#   (или meta storyboard_references: ["ref1.png", ...])
 
 # отдельная нарезка существующего board (если нужно)
 python scripts/slice_storyboard.py --project <path> --frames <M>

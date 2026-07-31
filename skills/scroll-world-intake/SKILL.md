@@ -32,7 +32,16 @@ description: Intake interview for Scroll World brand kit and integration mode. U
 
 Запиши в `02-brand-kit.md` и `project.meta.json`: **`media_aspect_ratio`** (`16:9`|`9:16`|`4:3`|`3:4`|`1:1`|`21:9`).
 
-Без этого поля **нельзя** запускать Storyboard или Video.
+Без этого поля **нельзя** запускать Storyboard или Video. Вопрос обязателен **ДО** storyboard: кадры раскадровки всегда равны формату видео (нельзя для видео 1:1 делать раскадровку 16:9).
+
+### 2b. Референсы для сториборда (обязательно, ДО storyboard)
+
+«Есть ли у вас референсные картинки для раскадровки — стиль, мир, композиция?»
+
+- **Нет референсов** — раскадровка генерируется с нуля по текстовому описанию (режим text-to-image, по умолчанию).
+- **Пришлю файлы** — укажите пути к локальным файлам; они загрузятся в Kie и зададут стиль/композицию board (режим image-to-image).
+
+Если есть — запиши локальные пути в `02-brand-kit.md` и `project.meta.json`: **`storyboard_references`** (список путей; пустой список или отсутствие поля = text-to-image).
 
 ### 3. Бренд-кит
 
@@ -68,7 +77,7 @@ description: Intake interview for Scroll World brand kit and integration mode. U
 Запиши в `02-brand-kit.md` и в `project.meta.json`:
 `insert_placement`, `video_resolution` (`480p`|`720p`), опционально `video_duration` (диапазон **4–15**, дефолта нет; per-leg `duration_sec` выбирает Director в Journey — если не задана нигде, это ошибка конфигурации), опционально `storyboard_resolution` (`2K` default / `4K` по запросу).
 
-Итог intake в meta: **`media_aspect_ratio`**, `insert_placement`, `video_resolution` (default `480p`), `storyboard_resolution` (default `2K`).
+Итог intake в meta: **`media_aspect_ratio`**, `insert_placement`, `video_resolution` (default `480p`), `storyboard_resolution` (default `2K`), **`storyboard_references`** (список локальных путей или `[]`).
 
 Если на intake не спросили место вставки — **обязательно уточнить перед Video** (см. skill video).
 

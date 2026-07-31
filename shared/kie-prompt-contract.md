@@ -13,6 +13,10 @@ The model has **no** memory of prior tasks, leg indices, MP4 files, storyboard p
 
 Never explain the pipeline inside the Kie prompt.
 
+## NO TEXT ON IMAGE (MANDATORY)
+
+Промпты **storyboard и video всегда** содержат блок NO TEXT: на генерируемых изображениях/видео запрещены **текст, буквы, цифры, логотипы, водяные знаки**. Русский/брендовый copy накладывается потом через DOM overlays (`assets/overlays.json`), никогда через генерацию. В режиме image-to-image референс задаёт стиль/композицию — текстовый промпт всё равно **обязателен** и тоже содержит блок NO TEXT.
+
 ## Length (Kie API)
 
 | | Chars |

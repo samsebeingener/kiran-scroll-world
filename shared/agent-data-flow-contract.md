@@ -39,9 +39,9 @@ User → Director
 
 ## Hard rules
 
-- Image gen: Kie `gpt-image-2-text-to-image` via `generate_storyboard_panels.py` (production); `gpt-image-2-image-to-image` allowed for repair only.
+- Image gen: Kie via `generate_storyboard_panels.py` — `gpt-image-2-text-to-image` (no user references) or `gpt-image-2-image-to-image` (user storyboard references, uploaded via Kie File Upload API).
 - Video gen: only Kie `bytedance/seedance-2-mini` via `kie_seedance_2_mini.py`.
-- No baked text in images/video.
+- NO TEXT ON IMAGE: no baked text/letters/numbers/logos/watermarks in images/video.
 - Russian UI copy only via DOM / `overlays.json`.
 - One web chain per project; format fixed by `media_aspect_ratio`.
 - Asset versions: never delete/overwrite `001-*`; regenerations use `002-*`, `003-*`.

@@ -1,6 +1,8 @@
 # Storyboard board prompt template
 
-Replace tokens. No text inside cells. Continuity > pretty separate postcards.
+Replace tokens. Continuity > pretty separate postcards.
+
+**MANDATORY — NO TEXT ON IMAGE: no text, no letters, no numbers, no logos, no watermarks anywhere on the generated image. Russian/brand copy is added later as DOM overlays, never baked into pixels.**
 
 ```text
 STYLE: {{STYLE_PREAMBLE}}
@@ -18,5 +20,5 @@ Each panel is a {{CELL_ASPECT}} keyframe. Order L→R, T→B:
 {{M}}) {{KFM_BEAT}} — …
 
 Between panels the implied motion must match the journey Transition plan (drone / push-in / morph / track / etc.).
-No text, no letters, no numbers, no logos, no watermarks.
+MANDATORY — NO TEXT ON IMAGE: absolutely no text, no letters, no numbers, no logos, no watermarks, no signage in any panel. All copy is overlaid later via DOM overlays.
 ```

@@ -52,6 +52,8 @@ Seedance: aspect_ratio = media_aspect_ratio
 
 ## Allowed cell aspects (intake)
 
+**ЗАПРЕТ MISMATCH (жёстко):** кадры сториборда ВСЕГДА равны формату видео (`media_aspect_ratio`). Видео 16:9 → кадры board 16:9. Видео 1:1 → кадры board 1:1. **Нельзя для видео 1:1 делать раскадровку 16:9** — и наоборот, любой mismatch блокирует пайплайн на hard aspect gate.
+
 | Value | When to offer (RU) |
 |-------|-------------------|
 | `16:9` | **По умолчанию** — горизонтальный блок на лендинге / hero |
@@ -61,8 +63,12 @@ Seedance: aspect_ratio = media_aspect_ratio
 | `1:1` | Квадратная карточка / тайл |
 | `21:9` | Широкая кинематографическая полоса |
 
-Intake **must** ask this **before** storyboard generation.  
+Intake **must** ask this **before** storyboard generation — вопрос о формате видео обязателен ДО storyboard, потому что кадры board = формат видео.  
 Director gate: no Storyboard / Video without `media_aspect_ratio`.
+
+## NO TEXT ON IMAGE (MANDATORY)
+
+На генерируемых изображениях (board, кадры) **запрещены** текст, буквы, цифры, логотипы, водяные знаки. Текст — только DOM overlays после генерации.
 
 ## Production path
 

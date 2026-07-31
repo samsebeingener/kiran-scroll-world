@@ -26,7 +26,7 @@ alwaysApply: true
 Общение: `shared/user-communication-contract.md`.
 Версии ассетов: `shared/asset-versioning-contract.md`.
 Кинематограф: `shared/cinematic-transition-contract.md`.
-Сториборд: `shared/storyboard-generation-contract.md` (Kie `gpt-image-2-text-to-image` @ 2K/4K).
+Сториборд: `shared/storyboard-generation-contract.md` (Kie `gpt-image-2-text-to-image` без референсов / `gpt-image-2-image-to-image` с референсами пользователя через Kie File Upload API; 2K/4K).
 Видео: `shared/video-generation-contract.md` (Kie `bytedance/seedance-2-mini`).
 Формат кадра: `shared/media-format-contract.md` (`media_aspect_ratio` — панели = видео).
 Stills: `shared/scrub-still-contract.md`. Швы: `shared/seam-playback-contract.md`.
@@ -67,7 +67,7 @@ Brief → Intake → Journey → [Gate Pitch: 04-journey-pitch.md]
 - Любой image/video генератор кроме Kie `gpt-image-2-text-to-image`, Kie `gpt-image-2-image-to-image` и Kie `bytedance/seedance-2-mini`
 - Seedance first/last + `reference_*` в одном запросе
 - Промпты с `@image1` / `@image2` (нужны first frame / last frame)
-- Текст, впечатанный в картинки/видео
+- Текст, впечатанный в картинки/видео — **NO TEXT ON IMAGE** (буквы, цифры, логотипы, watermark запрещены; текст — только DOM overlays через `overlays.json`)
 - Storyboard/Video с разным aspect — один `media_aspect_ratio` на весь пайплайн
 - Architecture B connectors в v1
 - Работа ролей в main chat
