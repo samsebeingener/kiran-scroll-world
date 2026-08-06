@@ -1,17 +1,17 @@
 # Scroll World — Kie video prompt contract
 
-**Kie receives exactly:** `first_frame_url` + `last_frame_url` + `prompt` string.
+**Kie получает ровно:** `first_frame_url` + `last_frame_url` + строка `prompt`.
 
-The model has **no** memory of prior tasks, leg indices, MP4 files, storyboard paths, or our pipeline. It only animates between the **two PNGs you uploaded**.
+У модели **нет** памяти о прошлых задачах, индексах leg, MP4, путях storyboard или нашем пайплайне. Она только анимирует между **двумя загруженными PNG**.
 
-## Split of responsibilities
+## Разделение ответственности
 
-| Layer | Who | Content |
-|-------|-----|---------|
-| **Which images** | `video_frame_chain.py` + `kie_seedance_2_mini.py` | leg 0: storyboard `playback_chain[0]`→`[1]` (default KF1→KF2); leg i>0: ffmpeg last frame of leg i−1 → storyboard `playback_chain[i+1]` (default KFi+2) |
-| **What happens between them** | `05-image-prompts/*-leg-*.md` → Kie `prompt` | Pure visual/cinematic English only |
+| Слой | Кто | Содержание |
+|------|-----|------------|
+| **Какие картинки** | `video_frame_chain.py` + `kie_seedance_2_mini.py` | leg 0: storyboard `playback_chain[0]`→`[1]` (default KF1→KF2); leg i>0: ffmpeg last frame of leg i−1 → storyboard `playback_chain[i+1]` (default KFi+2) |
+| **Что происходит между ними** | `05-image-prompts/*-leg-*.md` → Kie `prompt` | Только визуальный/кинематографический English |
 
-Never explain the pipeline inside the Kie prompt.
+Никогда не объясняй пайплайн внутри Kie prompt.
 
 ## NO TEXT ON IMAGE (MANDATORY)
 
@@ -26,20 +26,55 @@ Never explain the pipeline inside the Kie prompt.
 | **Script minimum** | **800** (hard reject) |
 | **Recommended** | **1 200–4 000** (warn if &lt; 1 200) |
 
-Short prompts under-direct the model. Use `templates/video-leg-prompt.template.md` — timed camera beats, explicit first/last plate descriptions, beat-by-beat object morph.
+Короткие промпты недонаправляют модель. Используй `templates/video-leg-prompt.template.md` — CREATIVE DIRECTION, STAGES, structured plate locks, timed camera beats с end-state, LANDING CONTRACT, COUNT/EXCLUSIONS.
 
-## Allowed in Kie prompt
+> Soft/hard validation длины и запрещённых фраз живёт в `scripts/kie_seedance_2_mini.py` (отдельный агент/скрипт). Этот контракт задаёт **содержание** prompt.
 
-- What is visible in the **first frame plate** and **last frame plate**
-- Camera path (dolly, crane, steadicam, aerial glide, …)
-- Object/material transforms between those two looks
-- World continuity **as seen in the plates** (ground, light, landmarks)
-- Anti-slideshow as **motion quality** (no dissolve-only, no crossfade wipe) — not as pipeline rules
-- `The first frame is the exact start. The last frame is the exact end.` — anchors the two uploaded images
+## Must-include в Kie prompt
 
-## Forbidden in Kie prompt (script rejects)
+Обязательные секции (порядок как в template):
 
-Pipeline / meta (model cannot act on these):
+1. **Anchor** — exact start/end + single continuous shot
+2. **CREATIVE DIRECTION** — одно предложение: subject + event + camera idea
+3. **STAGES** — STAGE A/B/C… состояния мира **до** timed beats
+4. **FIRST FRAME** / **LAST FRAME** — описания plates
+5. **VISUAL PLATE FIDELITY** — structured plate locks:
+   - Start/End: `silhouette_axis`, `accent_color_position`, `ground_plane`, `horizon`, `materials`, `prop_count` (+ list)
+   - `Delta vs start`
+   - Не изобретать геометрию, которой нет ни на одном plate
+6. **CAMERA PATH**:
+   - Shot grammar: shot size start→end; primary / secondary move
+   - Registry `prompt_snippet`s
+   - Timed beats с observable end-state («by Xs: …»)
+7. **LANDING CONTRACT** — settle 0.4–0.6s на last-frame composition; без late zoom/crop/silhouette после начала settle
+8. **WORLD CONTINUITY** / **OBJECT TRANSFORM** / **MATERIAL & LIGHT** / **MOTION QUALITY**
+9. **COUNT** / **EXCLUSIONS**
+10. **FORBIDDEN** — no text/letters/numbers/logos/watermarks/captions/UI/subtitles/BGM cues/new objects not in plates
+
+Также допустимо:
+
+- World continuity **как видно на plates** (ground, light, landmarks)
+- Anti-slideshow как **motion quality** (no dissolve-only, no crossfade wipe) — не как pipeline rules
+- `{{CELL_ASPECT}}` только как composition language при необходимости
+
+## Beat budget
+
+| Duration | Beats |
+|----------|-------|
+| 4–6 s | 2–3 |
+| 7–10 s | 3–4 |
+| 11–15 s | 4–5 |
+
+Каждый beat **обязан** заканчиваться observable end-state phrase (`by Xs: …`). Тайминги масштабировать к `duration_sec` leg.
+
+## Forbidden в Kie prompt
+
+### Tech dump (не класть в prose)
+
+- `480p`, `720p`, имена API-полей (`resolution`, `generate_audio`, …) как настройки задачи
+- Длительность как «API duration=N» — только кинематографический feel (`{{DURATION}}s feel` / beat times)
+
+### Pipeline / meta (script rejects)
 
 - `FRAME SOURCES`, `frame sources`
 - `previous leg`, `next leg`, `leg 0`, `leg 1`, …
@@ -52,14 +87,17 @@ Pipeline / meta (model cannot act on these):
 
 ## Journey vs Kie prompt
 
-`03-journey.md` → `video_prompt_seed` is **notes for the video agent** (may mention KF numbers, legs, continuity plan).
+`03-journey.md` → `video_prompt_seed` — **заметки для video-агента** (можно упоминать KF, legs, план continuity).
 
-The video agent **rewrites** that into `05-image-prompts/*-leg-*.md` with **only** visual language before `createTask`.
+Video-агент **переписывает** это в `05-image-prompts/*-leg-*.md` с **только** визуальным языком перед `createTask`.
 
 ## Agent checklist before createTask
 
-1. Prompt **≥ 800** chars (target **1 200–4 000**); all template sections filled with concrete visuals
-2. Describes motion between **these two PNGs** — not how we chose them
-3. No filenames, leg numbers, or storyboard references
-4. Timed camera beats match `duration` (**4–15** s; required per leg from the journey — no default; complex morphs often 8–12). Prefer camera-path snippets from the journey / camera registry so beats land on the real clip length
-5. Ending: slow forward drift in final ~0.5s — no “next leg”
+1. Prompt **≥ 800** chars (target **1 200–4 000**); все must-include секции заполнены конкретными visuals
+2. Есть **CREATIVE DIRECTION**, **STAGES** (до timestamps), **LANDING CONTRACT**, **COUNT** / **EXCLUSIONS**
+3. Plate locks заполнены **после live PNG read**; structured fields (silhouette / accent / ground / horizon / materials / prop_count) на start и end + delta
+4. CAMERA PATH: shot grammar + registry snippets; число beats по beat budget; каждый beat с «by Xs: …» end-state
+5. Описывает motion между **этими двумя PNG** — не то, как мы их выбрали
+6. Нет filenames, leg numbers, storyboard references, resolution/API tech dump
+7. Timed beats совпадают с `duration` (**4–15** s; обязателен per leg из journey — без default; сложные morphs часто 8–12)
+8. Ending: LANDING settle **0.4–0.6s** на last-frame — без «next leg», без late zoom/crop после settle

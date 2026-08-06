@@ -6,6 +6,12 @@
 - **English UI to user** — questions/options/gates must be Russian with short explanations; never bare `embed` / `demo-page`.
 - **Wrong Seedance mode** — do not mix `first_frame_url`/`last_frame_url` with `reference_*` arrays.
 - **Thin video prompt** — Seedance 2 Mini needs **≥ 800** chars (target 1200–4000); use full template with timed beats.
+- **Beats without observable end-state** — every timed beat must end with `by Xs: …` (readable visual state); bare “continue dolly” without a landable outcome is invalid (P0).
+- **Settle too short / late zoom** — LANDING CONTRACT settle must be **0.4–0.6s**; no zoom, crop, or silhouette change after settle starts.
+- **Beat budget violation** — e.g. 4s leg with 5 morphs/camera beats; respect skill table (4–6s → 2–3 camera beats; object-transform ≤ same caps). Use `short_clip_variant` when `duration_sec ≤ 5`.
+- **Plate locks = journey paraphrase** — structured locks must come from a **live PNG read**, not copied Transition plan / `video_prompt_seed` prose (P2).
+- **Tech dump in Kie prompt** — never put `480p` / `720p` / API SETTINGS / duration-as-settings into the prompt string; resolution and duration are CLI only.
+- **Missing COUNT/EXCLUSIONS** — without explicit counts and exclusions Seedance invents props and subtitle/UI drift; always fill COUNT & EXCLUSIONS (P1).
 - **Pipeline meta in Kie prompt** — no FRAME SOURCES, previous/next leg, storyboard, preserve rendered; chain is in URLs only (`shared/kie-prompt-contract.md`).
 - **Pipeline refs in Kie prompt** — never mention leg N, MP4, prior tasks, or storyboard filenames; Kie only sees two uploaded images + prompt.
 - **Wrong leg order** — leg `i>0` needs active leg `i−1` in manifest; generate 0→1→…

@@ -90,15 +90,20 @@ Director **не** пропускает Storyboard/Video, если в `03-journey
 
 Промпт **обязан** (см. `templates/video-leg-prompt.template.md`, **1 200–4 000** chars):
 
-1. Якорь двух plates + SHOT (duration feel)
-2. **FIRST FRAME** / **LAST FRAME** — что видно на каждом plate (props, layout, materials)
-3. **CAMERA PATH** с таймингом по секундам (0–1s, 1–2.5s, …)
-4. Named transition type(s)
-5. **OBJECT TRANSFORMATION** — по элементам, что во что превращается
-6. WORLD CONTINUITY + MATERIAL & LIGHT
-7. MOTION QUALITY (anti-slideshow) + FORBIDDEN (no text)
+1. **Anchor** — exact start/end + single continuous shot
+2. **CREATIVE DIRECTION** — одно предложение (subject + event + camera idea)
+3. **STAGES** — STAGE A/B/C… состояния мира **до** timed beats
+4. **FIRST FRAME** / **LAST FRAME** — что видно на каждом plate (props, layout, materials)
+5. **VISUAL PLATE FIDELITY** — structured plate locks (silhouette / accent / ground / horizon / materials / prop_count) на start и end + delta; только после live PNG read
+6. **CAMERA PATH** — shot grammar (size start→end; primary/secondary) + registry snippets + timed beats; каждый beat с observable end-state («by Xs: …»)
+7. **LANDING CONTRACT** — settle **≥ 0.4 s** (обычно 0.4–0.6s) на last-frame composition; без late zoom/crop/silhouette после начала settle
+8. **OBJECT TRANSFORM** — по элементам, что во что превращается
+9. WORLD CONTINUITY + MATERIAL & LIGHT + MOTION QUALITY (anti-slideshow)
+10. **COUNT** / **EXCLUSIONS** + **FORBIDDEN** (no text / logos / new objects not in plates)
 
-**Запрещено в тексте для Kie:** leg numbers, storyboard, MP4, «preserve rendered end», «continue momentum from previous leg», FRAME SOURCES, snap-back к storyboard. Это делает код через `first_frame_url` / `last_frame_url`.
+Named transition type(s) из каталога выше входят в creative direction / stages / object transform — не отдельный tech-dump.
+
+**Запрещено в тексте для Kie:** leg numbers, storyboard, MP4, «preserve rendered end», «continue momentum from previous leg», FRAME SOURCES, snap-back к storyboard, dump `480p`/`720p`/API settings. Это делает код через `first_frame_url` / `last_frame_url` и createTask JSON.
 
 `video_prompt_seed` в journey — заметки агенту; перед createTask переписать в чистый визуальный prompt.
 

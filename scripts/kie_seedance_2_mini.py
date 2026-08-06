@@ -64,9 +64,146 @@ FORBIDDEN_PROMPT_PATTERNS = (
     r"\bleg\s*\d+\b",
 )
 
+# Variant C / P0–P2 structure (templates/video-leg-prompt.template.md)
+PLATE_LOCK_KEYS = (
+    "silhouette_axis",
+    "accent_color_position",
+    "ground_plane",
+    "horizon",
+    "materials",
+    "prop_count",
+)
+_TIMED_INTERVAL_RE = re.compile(r"\d+(?:\.\d+)?\s*[–-]\s*\d+(?:\.\d+)?")
+_TECH_DUMP_RE = re.compile(r"\b(?:480p|720p)\b|settings:", re.IGNORECASE)
+_SECTION_HEADER_RE = re.compile(r"^[A-Z][A-Z0-9 /&-]{2,}:\s*$")
+# Section starts that end the CAMERA PATH region even when body shares the line
+_CAMERA_PATH_END_PREFIXES = (
+    "landing contract",
+    "world continuity",
+    "object transform",
+    "material & light",
+    "motion quality",
+    "count:",
+    "exclusions:",
+    "forbidden:",
+)
+
 
 def _resolve_project_path(project: Path, path: Path) -> Path:
     return path if path.is_absolute() else (project / path)
+
+
+def _extract_camera_path_region(prompt: str) -> str:
+    """Prefer CAMERA PATH block for beat counting; else whole prompt."""
+    lines = prompt.splitlines()
+    start_i: int | None = None
+    for i, line in enumerate(lines):
+        if "camera path" in line.lower():
+            start_i = i
+            break
+    if start_i is None:
+        return prompt
+    region = [lines[start_i]]
+    for line in lines[start_i + 1 :]:
+        stripped = line.strip()
+        lower = stripped.lower()
+        if stripped and (
+            _SECTION_HEADER_RE.match(stripped)
+            or any(lower.startswith(p) for p in _CAMERA_PATH_END_PREFIXES)
+        ):
+            break
+        region.append(line)
+    return "\n".join(region)
+
+
+def _beat_budget_limit(duration: int) -> int | None:
+    if 4 <= duration <= 6:
+        return 3
+    if 7 <= duration <= 10:
+        return 4
+    if 11 <= duration <= 15:
+        return 5
+    return None
+
+
+def _prompt_structure_issues(prompt: str) -> list[str]:
+    """P0–P2 hard structure checks (Variant C). Empty list = OK."""
+    lower = prompt.lower()
+    issues: list[str] = []
+    tmpl = "templates/video-leg-prompt.template.md"
+    if "stages" not in lower and "stage a" not in lower:
+        issues.append(
+            f"Missing STAGES / STAGE A marker (P0–P2). Fill per {tmpl}."
+        )
+    if "landing contract" not in lower:
+        issues.append(
+            f"Missing LANDING CONTRACT section (P0–P2). Fill per {tmpl}."
+        )
+    if "count:" not in lower:
+        issues.append(
+            f"Missing COUNT: marker (P0–P2). Fill per {tmpl}."
+        )
+    if "exclusions:" not in lower:
+        issues.append(
+            f"Missing EXCLUSIONS: marker (P0–P2). Fill per {tmpl}."
+        )
+    if "creative direction" not in lower:
+        issues.append(
+            f"Missing CREATIVE DIRECTION section (P0–P2). Fill per {tmpl}."
+        )
+    return issues
+
+
+def _prompt_structure_soft_warnings(
+    prompt: str, duration: int | None = None
+) -> list[str]:
+    """P0–P2 soft heuristics — WARN only, never exit."""
+    lower = prompt.lower()
+    warnings: list[str] = []
+
+    lock_hits = sum(1 for key in PLATE_LOCK_KEYS if key in lower)
+    if lock_hits < 4:
+        warnings.append(
+            f"plate lock keys sparse ({lock_hits}/6 of "
+            f"{', '.join(PLATE_LOCK_KEYS)}); prefer ≥4 — "
+            "see templates/video-leg-prompt.template.md (P0–P2)"
+        )
+
+    tech_hits = _TECH_DUMP_RE.findall(prompt)
+    if tech_hits:
+        unique = sorted({h.lower() if isinstance(h, str) else h for h in tech_hits})
+        warnings.append(
+            f"tech dump in prompt (pipeline settings belong in CLI/meta, not Kie text): "
+            f"{unique} — see templates/video-leg-prompt.template.md (P0–P2)"
+        )
+
+    if duration is not None:
+        limit = _beat_budget_limit(duration)
+        if limit is not None:
+            region = _extract_camera_path_region(prompt)
+            intervals = _TIMED_INTERVAL_RE.findall(region)
+            if len(intervals) > limit:
+                warnings.append(
+                    f"beat budget overflow heuristic: {len(intervals)} timed intervals "
+                    f"for duration={duration}s (soft max {limit}) — "
+                    "see templates/video-leg-prompt.template.md (P0–P2)"
+                )
+
+    if "landing contract" in lower:
+        has_settle = (
+            "settle" in lower
+            or "0.4" in prompt
+            or "0.5" in prompt
+            or "0.6" in prompt
+        )
+        if not has_settle:
+            warnings.append(
+                "LANDING CONTRACT present but no settle window "
+                "(0.4 / 0.5 / 0.6 / 'settle') — "
+                "see templates/video-leg-prompt.template.md (P0–P2)"
+            )
+
+    return warnings
 
 
 def resolve_resolution(cli_value: str | None, meta: dict[str, Any]) -> str:
@@ -124,7 +261,14 @@ def resolve_duration(
     return duration
 
 
-def validate_local_leg_inputs(*, start_path: Path, end_path: Path, prompt: str) -> None:
+def validate_local_leg_inputs(
+    *,
+    start_path: Path,
+    end_path: Path,
+    prompt: str,
+    duration: int | None = None,
+) -> None:
+    """Validate local frames + prompt (length, forbidden meta, Variant C P0–P2)."""
     if not start_path.is_file():
         raise SystemExit(f"Missing start frame: {start_path}")
     if not end_path.is_file():
@@ -135,8 +279,9 @@ def validate_local_leg_inputs(*, start_path: Path, end_path: Path, prompt: str) 
     if plen < MIN_PROMPT_CHARS:
         raise SystemExit(
             f"Prompt too short ({plen} chars, min {MIN_PROMPT_CHARS}). "
-            "Expand per templates/video-leg-prompt.template.md — timed camera beats, "
-            "first/last frame descriptions, object transforms (target 1200–4000 chars)."
+            "Expand per templates/video-leg-prompt.template.md (P0–P2) — "
+            "STAGES / CREATIVE DIRECTION / LANDING CONTRACT, timed beats, "
+            "plate locks (target 1200–4000 chars)."
         )
     if plen > MAX_PROMPT_CHARS:
         raise SystemExit(
@@ -169,6 +314,14 @@ def validate_local_leg_inputs(*, start_path: Path, end_path: Path, prompt: str) 
                 f"Prompt matches forbidden pattern {pattern!r} (pipeline meta). "
                 "See shared/kie-prompt-contract.md"
             )
+
+    # Variant C hard structure (P0–P2) — SystemExit immediately
+    hard = _prompt_structure_issues(prompt_stripped)
+    if hard:
+        raise SystemExit("Prompt structure invalid (P0–P2):\n- " + "\n- ".join(hard))
+
+    for msg in _prompt_structure_soft_warnings(prompt_stripped, duration=duration):
+        print(f"WARN: {msg}", flush=True)
 
 
 def validate_frame_urls(*, first_frame_url: str, last_frame_url: str) -> None:
@@ -284,7 +437,12 @@ def main() -> None:
         start_override=start_override,
         end_override=end_override,
     )
-    validate_local_leg_inputs(start_path=start_path, end_path=end_path, prompt=prompt)
+    validate_local_leg_inputs(
+        start_path=start_path,
+        end_path=end_path,
+        prompt=prompt,
+        duration=duration,
+    )
 
     legs_dir = project / "assets" / "video" / "legs"
     if args.version is not None:

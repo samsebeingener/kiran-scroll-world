@@ -82,13 +82,19 @@ Upload local frames via `scripts/kie_file_upload.py` → `fileUrl` as `first_fra
 Контракт: `shared/kie-prompt-contract.md`.  
 Промпт пишет **scroll-world-video** по `templates/video-leg-prompt.template.md`.
 
-Must include (detailed template, **≥ 800** chars, target **1 200–4 000**):
+Must include (P0–P2 template, **≥ 800** chars, target **1 200–4 000**):
 
-1. FIRST FRAME / LAST FRAME plate descriptions
-2. Timed CAMERA PATH beats aligned with `duration`
-3. Beat-by-beat OBJECT TRANSFORM
-4. WORLD CONTINUITY, MATERIAL & LIGHT
-5. MOTION QUALITY + FORBIDDEN (no text/logos)
+1. Anchor — exact start/end + single continuous shot
+2. **CREATIVE DIRECTION** (one sentence) + **STAGES** (before timestamps)
+3. FIRST FRAME / LAST FRAME plate descriptions
+4. **VISUAL PLATE FIDELITY** — structured start/end plate locks + delta (live PNG read only)
+5. **CAMERA PATH** — shot grammar + snippets + timed beats with observable end-state (`by Xs: …`); beat budget 4–6s→2–3, 7–10→3–4, 11–15→4–5
+6. **LANDING CONTRACT** — settle 0.4–0.6s; no late zoom/crop after settle
+7. Beat-by-beat OBJECT TRANSFORM
+8. WORLD CONTINUITY, MATERIAL & LIGHT, MOTION QUALITY
+9. **COUNT** / **EXCLUSIONS** + FORBIDDEN (no text/logos/BGM cues/new objects not in plates)
+
+Do not put resolution (`480p`/`720p`) or other API settings in Kie prose.
 
 ## Env
 

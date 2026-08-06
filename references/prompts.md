@@ -24,14 +24,27 @@ No text, letters, numbers, logos, watermarks.
 
 Шаблон: `templates/storyboard-prompt.template.md`; в Kie уходит **один** запрос через `generate_storyboard_panels.py`.
 
-## Video leg prompt shape (Seedance 2.0 Mini)
+## Video leg prompt shape (Seedance 2.0 Mini, P0–P2)
+
+Шаблон: `templates/video-leg-prompt.template.md`.  
+Filled example: `templates/examples/video-leg-prompt.filled.md`.  
+Порядок заполнения: `skills/scroll-world-video/SKILL.md` (live PNG → locks → STAGES → CREATIVE DIRECTION → shot grammar → beats → landing → COUNT/EXCLUSIONS).
 
 ```text
-FIRST FRAME: …
-LAST FRAME: …
-CAMERA PATH (timed beats for {{DURATION}}s): …
-OBJECT TRANSFORM: …
-MATERIAL & LIGHT / MOTION QUALITY / FORBIDDEN
+Anchor: first frame = exact start; last frame = exact end; single continuous shot
+CREATIVE DIRECTION: one sentence (subject + event + camera)
+SHOT / shot grammar: shot size + 1 primary + ≤1 secondary (registry snippets)
+FIRST FRAME / LAST FRAME: plate descriptions from live PNG read
+VISUAL PLATE FIDELITY: structured start/end locks (silhouette_axis, accent, ground, horizon, materials, prop_count)
+STAGES: A / B / C… scene states before timestamps
+CAMERA PATH: timed beats scaled to duration_sec; each beat ends with "by Xs: …"
+LANDING CONTRACT: settle 0.4–0.6s; no late zoom/crop/silhouette change
+OBJECT TRANSFORM: mechanic + beat-by-beat with end-states (respect beat budget)
+WORLD CONTINUITY / MATERIAL & LIGHT / MOTION QUALITY
+COUNT: / EXCLUSIONS:
+FORBIDDEN: no text/logos/… 
 ```
 
-Visual motion only — `shared/kie-prompt-contract.md`. No legs/storyboard/MP4 in prompt text.
+Beat budget: 4–6s → 2–3 camera beats; 7–10 → 3–4; 11–15 → 4–5 (object-transform ≤ same caps).
+
+Visual motion only — `shared/kie-prompt-contract.md`. No legs/storyboard/MP4/`@image`/480p/720p in prompt text.
