@@ -2,7 +2,15 @@
 
 Replace tokens. Continuity > pretty separate postcards.
 
-**MANDATORY — NO TEXT ON IMAGE: no text, no letters, no numbers, no logos, no watermarks anywhere on the generated image. Russian/brand copy is added later as DOM overlays, never baked into pixels.**
+## Agent notes (NOT sent to Kie)
+
+Markdown above/below the fence is for humans/agents only: slug, M, grid, mode,
+resolution workarounds, journey notes. **`generate_storyboard_panels.py` extracts
+only the ```text body** into createTask `prompt`. Never put slug / `mode:` /
+`if Kie 2K…` inside the fence.
+
+**MANDATORY — NO TEXT ON IMAGE:** no text, letters, numbers, logos, watermarks on
+the generated image. Russian/brand copy = DOM overlays later.
 
 ```text
 STYLE: {{STYLE_PREAMBLE}}

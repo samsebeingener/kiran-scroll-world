@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Any
 
 from asset_versions import format_version, load_manifest, next_version, register_leg
-from kie_common import KieTaskClient, run_task_with_retry
+from kie_common import KieTaskClient, extract_kie_prompt_from_markdown, run_task_with_retry
 from kie_file_upload import KieFileUploadClient
 from media_format import load_project_meta, resolve_cell_aspect
 from video_frame_chain import resolve_leg_frame_paths, save_leg_last_frame
@@ -425,9 +425,13 @@ def main() -> None:
     prompt_path = _resolve_project_path(project, args.prompt_file)
     if not prompt_path.is_file():
         raise SystemExit(f"Missing --prompt-file: {prompt_path}")
-    prompt = prompt_path.read_text(encoding="utf-8").strip()
-    if not prompt:
-        raise SystemExit(f"Empty prompt file: {prompt_path}")
+    raw_prompt = prompt_path.read_text(encoding="utf-8-sig")
+    # Prefer ```text fence; bare files still allowed (legacy). Leak markers hard-fail.
+    prompt = extract_kie_prompt_from_markdown(
+        raw_prompt,
+        require_text_fence=False,
+        source=prompt_path,
+    )
 
     start_override = _resolve_project_path(project, args.start) if args.start else None
     end_override = _resolve_project_path(project, args.end) if args.end else None

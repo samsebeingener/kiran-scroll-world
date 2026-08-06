@@ -181,6 +181,53 @@ def aspect_close(actual_w: int, actual_h: int, target_aspect: str, *, tol: float
     return abs((actual_w / actual_h) - target) / target <= tol
 
 
+def validate_board_pixels_for_grid(
+    width: int,
+    height: int,
+    *,
+    cols: int,
+    rows: int,
+    cell_aspect: str,
+    request_aspect: str | None = None,
+    min_vs_grid_tol: float = 0.05,
+    request_tol: float = 0.12,
+) -> None:
+    """Hard-fail if downloaded board cannot be a valid contact sheet for this grid.
+
+    Kie sometimes ignores ``aspect_ratio`` (e.g. returns 2:1 when asked 3:1) and
+    paints a flipped 2×3 sheet. Slicing that as 3×2 produces garbage cells.
+    Refuse before centre-crop / equal-grid slice.
+    """
+    if width <= 0 or height <= 0:
+        raise SystemExit(f"Invalid board size {width}x{height}")
+    actual = width / height
+    cw, ch = parse_aspect(cell_aspect)
+    grid_ar = (cols * cw) / (rows * ch)
+
+    if actual < grid_ar * (1.0 - min_vs_grid_tol):
+        req_note = f" (requested {request_aspect})" if request_aspect else ""
+        raise SystemExit(
+            f"BOARD ASPECT GATE: board is {width}x{height} (AR {actual:.4f}){req_note}, "
+            f"but {cols}x{rows} grid of {cell_aspect} cells needs AR ≥ {grid_ar:.4f} "
+            f"(exact board {simplify_aspect(cols * cw, rows * ch)}). "
+            f"Kie likely returned the wrong aspect or a flipped {rows}x{cols} sheet. "
+            f"Do NOT slice — regenerate via generate_storyboard_panels.py."
+        )
+
+    if request_aspect:
+        try:
+            req = aspect_to_float(request_aspect)
+        except ValueError:
+            req = None
+        if req and abs(actual - req) / req > request_tol:
+            raise SystemExit(
+                f"BOARD ASPECT GATE: board is {width}x{height} (AR {actual:.4f}), "
+                f"but createTask requested aspect_ratio={request_aspect} (AR {req:.4f}). "
+                f"Relative error {abs(actual - req) / req:.1%} > {request_tol:.0%}. "
+                f"Do NOT slice — regenerate the board (Kie ignored aspect_ratio)."
+            )
+
+
 def encode_dimensions(resolution: str, cell_aspect: str) -> tuple[int, int]:
     """Scrub encode size; short edge matches video_resolution (480 or 720)."""
     res = (resolution or "").strip().lower()

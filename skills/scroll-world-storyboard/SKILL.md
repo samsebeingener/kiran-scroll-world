@@ -27,6 +27,7 @@ description: One Kie gpt-image-2 board generation (grid of M panels) + local sli
 
 1. Следующий `{NNN}` через `asset_versions.py next … *-board.png`
 2. Файл: `05-image-prompts/{NNN}-storyboard.md` — заполни `templates/storyboard-prompt.template.md`:
+   - **В Kie уходит ТОЛЬКО блок ```text```** (скрипт вырезает fence). Снаружи fence: slug / M / grid / mode / заметки — **не** в createTask.
    - {{M}}, {{COLS}}×{{ROWS}} grid, {{CELL_ASPECT}} = `media_aspect_ratio` (не хардкодить 16:9)
    - ONE CONTINUOUS WORLD / same flight path через весь board
    - beat / camera / continuity landmark / from-prev для каждой панели

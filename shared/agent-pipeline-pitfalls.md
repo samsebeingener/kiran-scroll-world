@@ -12,6 +12,9 @@
 - **Plate locks = journey paraphrase** — structured locks must come from a **live PNG read**, not copied Transition plan / `video_prompt_seed` prose (P2).
 - **Tech dump in Kie prompt** — never put `480p` / `720p` / API SETTINGS / duration-as-settings into the prompt string; resolution and duration are CLI only.
 - **Missing COUNT/EXCLUSIONS** — without explicit counts and exclusions Seedance invents props and subtitle/UI drift; always fill COUNT & EXCLUSIONS (P1).
+- **Whole .md dumped into Kie prompt** — `generate_storyboard_panels.py` / Seedance must send **only** the ```text fence. Slug, M, grid, mode, «if Kie 2K fails…» are agent notes OUTSIDE the fence. Script extracts fence; missing fence (storyboard) or meta leak inside fence → hard fail.
+- **Slice without board AR gate** — never equal-grid slice a board whose pixel AR is narrower than the contact-sheet target (e.g. Kie returned **2:1** / flipped 2×3 when asked **3:1** for 3×2×16:9). `validate_board_pixels_for_grid` must hard-fail before crop; regenerate board, do not «fix» with centre-crop.
+- **Slice without cell content gate** — after equal-grid crop, each cell must pass empty/edge-cut QA (`validate_sliced_cells_content`: min dark_ratio, blank std/mean, sparse subject glued to one edge). Passing only `aspect_close` is not enough — 002-frame-02 style garbage must hard-fail before `active_map` update.
 - **Pipeline meta in Kie prompt** — no FRAME SOURCES, previous/next leg, storyboard, preserve rendered; chain is in URLs only (`shared/kie-prompt-contract.md`).
 - **Pipeline refs in Kie prompt** — never mention leg N, MP4, prior tasks, or storyboard filenames; Kie only sees two uploaded images + prompt.
 - **Wrong leg order** — leg `i>0` needs active leg `i−1` in manifest; generate 0→1→…

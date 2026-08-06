@@ -27,14 +27,22 @@ Requires `KIE_API_KEY`. Allowed image backends: `gpt-image-2-text-to-image` and 
 
 ## Prompt
 
-Prompt = `templates/storyboard-prompt.template.md`, filled into `05-image-prompts/{NNN}-storyboard.md`:
+Prompt file = `05-image-prompts/{NNN}-storyboard.md` filled from
+`templates/storyboard-prompt.template.md`.
+
+**Kie payload = only the ```text … ``` fence.** Agent notes outside the fence
+(slug, M, grid, mode, journey, resolution workarounds) must **never** reach
+`createTask`. `scripts/generate_storyboard_panels.py` extracts the fence and
+hard-fails if it is missing or if pipeline meta leaked into the fence body.
+
+Inside the fence:
 
 - contact sheet of {{M}} panels in a {{COLS}}x{{ROWS}} grid on **one** image
 - per-panel tokens: beat / camera position / continuity landmark / from-prev leftover
 - ONE CONTINUOUS WORLD: one diorama territory, one camera flight, shared ground/light/materials — continuity runs across the whole board
 - **NO TEXT ON IMAGE (MANDATORY): no text, letters, numbers, logos, watermarks inside cells** (Russian/brand copy = DOM overlays later)
 
-**В Kie уходит ОДИН запрос** с этим промптом. В режиме i2i к запросу добавляются HTTPS URL референсов (см. Backend modes).
+**В Kie уходит ОДИН запрос** с извлечённым visual prompt. В режиме i2i к запросу добавляются HTTPS URL референсов (см. Backend modes).
 
 ## Storyboard references (meta)
 
@@ -63,7 +71,7 @@ Board aspect может не входить в whitelist Kie API. Правило
 
 > Из whitelist берётся **ближайший aspect с соотношением ширина/высота >= board**. Лишнее по ширине/высоте обрезает `slice_storyboard.py` (centre-crop к точному grid aspect перед нарезкой). Если ни один aspect whitelist не покрывает board — `SystemExit` с подсказкой сменить M / `media_aspect_ratio`.
 
-**Hard aspect gate:** после slice каждая панель обязана соответствовать `media_aspect_ratio` (`aspect_close` в `slice_storyboard.py`). Если board не режется в `media_aspect_ratio` — `SystemExit`; repair = **новая генерация board** (новый NNN) с более подходящим grid/aspect, а не ослабление gate.
+**Hard aspect gate:** после download board — `validate_board_pixels_for_grid` (AR board ≥ grid target и близко к requested Kie aspect). После slice каждая панель: (1) `aspect_close` к `media_aspect_ratio`; (2) **content gate** `validate_sliced_cells_content` — не пустой кадр, не «субъект приклеен к одному краю» (типичный wrong-grid / half-cut). Любой fail → `SystemExit` **до** обновления `active_map` (кроме явного `--skip-content-gate` только для repair). Repair = **новая генерация board** (новый NNN), не ослабление gate.
 
 ## CLI
 

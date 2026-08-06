@@ -16,3 +16,7 @@ is_background: false
 - `gpt-image-2-image-to-image` — когда пользователь дал референс(ы) (`storyboard_references` в meta или `--reference`); локальные файлы сначала загружаются через Kie File Upload API.
 
 Жёстко: **NO TEXT ON IMAGE** (текст — только DOM overlays позже); кадры board = `media_aspect_ratio` видео.
+
+**Kie prompt:** в `05-image-prompts/{NNN}-storyboard.md` визуал только внутри ` ```text `; slug/M/grid/mode/workaround — снаружи. Скрипт вырезает fence; целый `.md` в API слать нельзя.
+
+**После slice:** board AR gate + per-cell `aspect_close` + content gate (пустой/edge-cut кадр → hard fail до `active_map`).

@@ -23,8 +23,10 @@ import argparse
 from pathlib import Path
 from typing import Any
 
+from PIL import Image
+
 from asset_versions import format_version, next_version, register_storyboard
-from kie_common import KieTaskClient
+from kie_common import KieTaskClient, extract_kie_prompt_from_markdown
 from kie_file_upload import KieFileUploadClient
 from media_format import (
     board_aspect_ratio,
@@ -36,6 +38,7 @@ from media_format import (
     resolve_frames_count,
     resolve_storyboard_resolution,
     storyboard_strategy,
+    validate_board_pixels_for_grid,
 )
 from slice_storyboard import slice_board
 
@@ -163,9 +166,14 @@ def main() -> None:
         prompt_path = project / prompt_arg
     if not prompt_path.is_file():
         raise SystemExit(f"Prompt file not found: {args.prompt_file}")
-    prompt = prompt_path.read_text(encoding="utf-8-sig").strip()
-    if not prompt:
-        raise SystemExit(f"Empty prompt file: {prompt_path}")
+    raw_prompt = prompt_path.read_text(encoding="utf-8-sig")
+    # Kie gets ONLY the ```text fence — never slug / M / grid / workaround notes.
+    prompt = extract_kie_prompt_from_markdown(
+        raw_prompt,
+        require_text_fence=True,
+        source=prompt_path,
+    )
+    print(f"prompt_chars={len(prompt)} (extracted from ```text fence)", flush=True)
 
     sb_dir = project / "assets" / "storyboard"
     sb_dir.mkdir(parents=True, exist_ok=True)
@@ -210,6 +218,23 @@ def main() -> None:
     board_out = sb_dir / f"{ver}-board.png"
     client.download(urls[0], board_out)
     print(board_out)
+
+    # Hard gate: Kie sometimes returns 2:1 (flipped 2×3) when asked 3:1 for 3×2.
+    with Image.open(board_out) as im:
+        bw, bh = im.size
+    validate_board_pixels_for_grid(
+        bw,
+        bh,
+        cols=cols,
+        rows=rows,
+        cell_aspect=cell_aspect,
+        request_aspect=request_aspect,
+    )
+    print(
+        f"board_aspect_ok size={bw}x{bh} ar={bw / bh:.4f} "
+        f"(requested {request_aspect}, grid {cols}x{rows})",
+        flush=True,
+    )
 
     rel_board = str(board_out.relative_to(project)).replace("\\", "/")
     register_storyboard(project, ver_num, rel_board, set_active=True)

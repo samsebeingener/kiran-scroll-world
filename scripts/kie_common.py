@@ -4,11 +4,28 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 import time
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlencode
+
+# Markdown agent notes must NEVER reach Kie createTask `prompt`.
+_TEXT_FENCE_RE = re.compile(r"```text\s*\n(.*?)```", re.IGNORECASE | re.DOTALL)
+_PROMPT_FILE_LEAK_MARKERS = (
+    "slug:",
+    "# storyboard board prompt",
+    "# video leg prompt",
+    "mode: text-to-image",
+    "mode: image-to-image",
+    "if kie 2k",
+    "1k+3:1 workaround",
+    "05-image-prompts",
+    "project.meta.json",
+    "generate_storyboard_panels",
+    "kie_seedance",
+)
 
 try:
     import requests
@@ -41,6 +58,56 @@ class KieTransientError(RuntimeError):
 
 class KieTaskFailedError(KieTransientError):
     """Task reached state=fail; caller should re-submit a new task."""
+
+
+def extract_kie_prompt_from_markdown(
+    raw: str,
+    *,
+    require_text_fence: bool = False,
+    source: str | Path | None = None,
+) -> str:
+    """Return only the visual prompt for Kie.
+
+    Prompt markdown may contain agent notes (slug, M, grid, workarounds) **outside**
+    a ```text fence. Kie must receive **only** the fenced body — never the header.
+
+    - If one or more ```text ... ``` fences exist → use the **first** fence body.
+    - If none and ``require_text_fence`` → SystemExit.
+    - If none and not required → whole file (legacy bare prompts), with leak check.
+    """
+    text = (raw or "").lstrip("\ufeff").strip()
+    if not text:
+        label = str(source) if source else "prompt file"
+        raise SystemExit(f"Empty prompt file: {label}")
+
+    matches = _TEXT_FENCE_RE.findall(text)
+    if matches:
+        prompt = matches[0].strip()
+    elif require_text_fence:
+        label = str(source) if source else "prompt file"
+        raise SystemExit(
+            f"Missing ```text fence in {label}. "
+            "Put only the Kie visual prompt inside ```text … ```; "
+            "keep slug/M/grid/notes outside the fence "
+            "(see templates/storyboard-prompt.template.md)."
+        )
+    else:
+        prompt = text
+
+    if not prompt:
+        label = str(source) if source else "prompt file"
+        raise SystemExit(f"Empty ```text fence in {label}")
+
+    lower = prompt.lower()
+    for marker in _PROMPT_FILE_LEAK_MARKERS:
+        if marker in lower:
+            label = str(source) if source else "prompt"
+            raise SystemExit(
+                f"Pipeline/meta leak in Kie prompt from {label}: found {marker!r}. "
+                "Agent notes (slug, mode, resolution workarounds) belong OUTSIDE "
+                "the ```text fence — never in the createTask prompt."
+            )
+    return prompt
 
 
 def check_kie_body(body: dict[str, Any], context: str) -> None:

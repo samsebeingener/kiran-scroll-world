@@ -11,6 +11,8 @@
 | **Какие картинки** | `video_frame_chain.py` + `kie_seedance_2_mini.py` | leg 0: storyboard `playback_chain[0]`→`[1]` (default KF1→KF2); leg i>0: ffmpeg last frame of leg i−1 → storyboard `playback_chain[i+1]` (default KFi+2) |
 | **Что происходит между ними** | `05-image-prompts/*-leg-*.md` → Kie `prompt` | Только визуальный/кинематографический English |
 
+**Файлы промптов = markdown:** заметки агента (slug, M, grid, mode, workarounds) могут быть **снаружи** fence ` ```text `. В `createTask` уходит **только** тело fence через `kie_common.extract_kie_prompt_from_markdown`. Storyboard **требует** fence; video предпочитает его. Pipeline-meta внутри fence → hard fail.
+
 Никогда не объясняй пайплайн внутри Kie prompt.
 
 ## NO TEXT ON IMAGE (MANDATORY)
