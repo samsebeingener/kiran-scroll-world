@@ -69,9 +69,9 @@ Inside the fence:
 
 Board aspect может не входить в whitelist Kie API. Правило выбора `aspect_ratio` для запроса (см. `choose_request_aspect` в `media_format.py` / `SUPPORTED` в `generate_storyboard_panels.py`):
 
-> Из whitelist берётся **ближайший aspect с соотношением ширина/высота >= board**. Лишнее по ширине/высоте обрезает `slice_storyboard.py` (centre-crop к точному grid aspect перед нарезкой). Если ни один aspect whitelist не покрывает board — `SystemExit` с подсказкой сменить M / `media_aspect_ratio`.
+> Из whitelist берётся **ближайший aspect с соотношением ширина/высота >= board**. Slice: **equal-grid по полному board**, затем **per-cell** centre-crop к `media_aspect_ratio`. **Запрещён** board-level centre-crop к exact grid AR (ломает gutters на full-bleed 3:1 → bleed соседней панели / left-sliver).
 
-**Hard aspect gate:** после download board — `validate_board_pixels_for_grid` (AR board ≥ grid target и близко к requested Kie aspect). После slice каждая панель: (1) `aspect_close` к `media_aspect_ratio`; (2) **content gate** `validate_sliced_cells_content` — не пустой кадр, не «субъект приклеен к одному краю» (типичный wrong-grid / half-cut). Любой fail → `SystemExit` **до** обновления `active_map` (кроме явного `--skip-content-gate` только для repair). Repair = **новая генерация board** (новый NNN), не ослабление gate.
+**Hard aspect + content gates:** после download — `validate_board_pixels_for_grid`. После slice каждая панель: (1) `aspect_close`; (2) content gate (пустой / edge-cut / **vertical seam bleed**). Fail → `SystemExit` до `active_map` (кроме `--skip-content-gate`). Repair = новая генерация board или re-slice с актуальным slicer.
 
 ## CLI
 

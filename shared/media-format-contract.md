@@ -11,75 +11,71 @@ The storyboard is born as **one board image** (grid of M panels) from a single K
 
 | Field | Meaning |
 |-------|---------|
-| `media_aspect_ratio` | Aspect of **each keyframe panel** and **each video leg** |
-| `storyboard_resolution` | `2K` (default) \| `4K` — Kie gpt-image-2 budget for the one board request |
+| `media_aspect_ratio` | **Seedance video + каждый sliced frame** (обязателен с intake) |
+| `storyboard_resolution` | Preferred board: `1K` \| `2K` (default prefer) \| `4K` — скрипт может **форсировать 1K**, если canvas требует `3:1`/`1:3` |
 | `video_resolution` | `480p` (default) \| `720p` — Seedance / encode short edge |
 | `insert_placement` | Where the block sits on the page |
-| `frames` | **M** — число keyframe-панелей; задаётся на **Journey / Gate Pitch** под задачу проекта (не хардкод в коде) |
+| `frames` | **M** — keyframe panels (3\|6\|9) after Journey / Gate Pitch |
 
-Legacy alias: `video_aspect_ratio` → read as `media_aspect_ratio` if the latter is missing.
+Legacy alias: `video_aspect_ratio` → `media_aspect_ratio`.
 
-## M / K — доска и playback
-
-| Символ | Смысл |
-|--------|--------|
-| **M** | Размер доски (число keyframe-панелей). **M ∈ {3, 6, 9}** (сетки 3×1, 3×2, 3×3). |
-| **K** | Длина **текущей** playback-цепочки. **K ≤ M**. Панели PREFIX `[1..K]`. |
-| **reserve** | Хвост доски TAIL `[K+1..M]` — на продолжение, без видео сейчас. |
-| **legs_now** | Число видео-ног **сейчас** = **K − 1** (не всегда M − 1). |
-
-- **M не зашит в коде** — Journey: сначала оценка ног + `duration_sec` → K = legs+1 → M = min∈{3,6,9} с M≥K; пользователь подтверждает на Gate Pitch.
-- До approve бюджета в `project.meta.json` может быть `"frames": null` (см. `prepare_project_folder.ps1`).
-- В meta после Journey: `frames` = M; рекомендуется также `playback_chain` / K (см. `shared/memory-protocol.md`).
-- Полный прогон «вся доска в видео» — частный случай **K = M**, тогда legs = M − 1.
-
-## Kie API vs локальная нарезка (важно)
-
-**В Kie gpt-image-2 уходит ОДИН запрос** — промпт описывает contact sheet с сеткой M панелей на одном изображении. `aspect_ratio` запроса выбирается из whitelist API  
-(`16:9`, `9:16`, `4:3`, `3:4`, `1:1`, `21:9`, `2:1`, `3:1`, …). См. [Kie gpt-image-2](https://kie.ai/gpt-image-2?model=gpt-image-2-text-to-image).
-
-Правило выбора (`choose_request_aspect` в `media_format.py`): **ближайший aspect из whitelist с соотношением ширина/высота >= board grid**. Лишнее обрезает `slice_storyboard.py` — centre-crop к точному grid aspect, затем равная нарезка по сетке. Если ни один aspect не покрывает board — `SystemExit` (сменить M или `media_aspect_ratio`, регенерировать board).
-
-`board_aspect_ratio()` в `media_format.py` — **математика ВЫБОРА** aspect для запроса и проверки slice, не параметр API как есть (например `8:3` при M=6 и cell `16:9` в whitelist отсутствует → берётся более широкий `3:1`, излишек срезается при slice).
-
-**Локальная сшивка не нужна** — board рождается сразу одной генерацией; `stitch_storyboard.py` в production не используется.
+## Цепочка форматов (обязательная)
 
 ```text
-Kie ×1:   board @ nearest whitelist aspect ≥ grid  (ОДИН запрос)
-Local:    centre-crop → slice → {NNN}-frame-*.png  (hard aspect gate)
+1) User → media_aspect_ratio   (Seedance: 1:1 4:3 3:4 16:9 9:16 21:9)
+2) M + grid → exact_board      (cols×cell_w : rows×cell_h)
+3) resolve_storyboard_request → Kie aspect_ratio + resolution
+     - 2K/4K FORBIDDEN aspects: 5:4, 4:5, 3:1, 1:3, 9:21
+     - if covering canvas is 3:1/1:3 → use 1K automatically
+4) Slice → frames @ media_aspect_ratio
+5) Seedance → aspect_ratio = media_aspect_ratio  (тот же cell)
+```
+
+**Не хардкодить cell как 16:9** в промптах/агентах. Только значение из meta + computed FORMAT LOCK.
+
+## Kie API vs локальная нарезка
+
+| Слой | Что это | Кто считает |
+|------|---------|-------------|
+| **Cell / video** | `media_aspect_ratio` | intake / meta |
+| **Exact board** | grid × cell | `board_aspect_ratio(M, cell)` |
+| **Kie canvas** | whitelist ≥ exact | `resolve_storyboard_request` |
+| **Kie resolution** | 1K\|2K\|4K с учётом блокировок 2K/4K | то же |
+
+Промпт в createTask = **FORMAT LOCK** + ` ```text ` fence.  
+JSON `aspect_ratio` = **canvas**, не cell.
+
+```text
+Kie ×1:   board @ request_aspect + resolution  + FORMAT LOCK
+Local:    equal-grid on FULL board → per-cell crop to media_aspect_ratio
 Seedance: aspect_ratio = media_aspect_ratio
 ```
 
-## Allowed cell aspects (intake)
+## Allowed cell aspects (intake = Seedance)
 
-**ЗАПРЕТ MISMATCH (жёстко):** кадры сториборда ВСЕГДА равны формату видео (`media_aspect_ratio`). Видео 16:9 → кадры board 16:9. Видео 1:1 → кадры board 1:1. **Нельзя для видео 1:1 делать раскадровку 16:9** — и наоборот, любой mismatch блокирует пайплайн на hard aspect gate.
+**ЗАПРЕТ MISMATCH:** frames после slice == Seedance `aspect_ratio` == `media_aspect_ratio`.
 
 | Value | When to offer (RU) |
 |-------|-------------------|
-| `16:9` | **По умолчанию** — горизонтальный блок на лендинге / hero |
-| `9:16` | Вертикальная колонка, mobile-first секция |
+| `16:9` | Горизонтальный блок / hero (частый выбор, не единственный) |
+| `9:16` | Вертикальная колонка, mobile-first |
 | `4:3` | Классический горизонтальный блок |
-| `3:4` | Портретная вставка в узкой колонке |
-| `1:1` | Квадратная карточка / тайл |
+| `3:4` | Портретная вставка |
+| `1:1` | Квадратная карточка |
 | `21:9` | Широкая кинематографическая полоса |
 
-Intake **must** ask this **before** storyboard generation — вопрос о формате видео обязателен ДО storyboard, потому что кадры board = формат видео.  
-Director gate: no Storyboard / Video without `media_aspect_ratio`.
-
-## NO TEXT ON IMAGE (MANDATORY)
-
-На генерируемых изображениях (board, кадры) **запрещены** текст, буквы, цифры, логотипы, водяные знаки. Текст — только DOM overlays после генерации.
+Intake **must** ask **before** storyboard. Director: no Storyboard / Video without `media_aspect_ratio`.
 
 ## Production path
 
-**Only:** Kie `gpt-image-2-text-to-image` → **ONE board request** (grid of M panels) @ **2K/4K** → `slice_storyboard.py` режет board в M кадров с hard aspect gate (`aspect_close` → `media_aspect_ratio`; mismatch = `SystemExit`, repair через новую генерацию board).
+**Only:** Kie `gpt-image-2-*` → ONE board (`resolve_storyboard_request`) → `slice_storyboard.py` (AR gate + content gate + per-cell crop to `media_aspect_ratio`).
 
 | Stage | Uses |
 |-------|------|
-| Storyboard board | nearest whitelist aspect ≥ grid + `storyboard_resolution` via `generate_storyboard_panels.py` |
-| Frames | local slice only; every cell must match `media_aspect_ratio` |
+| Storyboard board | computed canvas + resolution via `generate_storyboard_panels.py` |
+| Frames | local slice; every cell = `media_aspect_ratio` |
 | Seedance | `aspect_ratio` = **`media_aspect_ratio`** |
-| `encode_scrub_clips.py` | pixels from `video_resolution` + **`media_aspect_ratio`** |
+| encode | `video_resolution` + **`media_aspect_ratio`** |
 
 Helper: `scripts/media_format.py`.
 
@@ -99,7 +95,11 @@ Helper: `scripts/media_format.py`.
 
 ## Pitfalls
 
-- Do **not** hardcode `16:9` in prompts if meta says otherwise.
+- Do **not** hardcode any single cell aspect (including 16:9) as the only format — cell = `media_aspect_ratio` from intake.
+- Do **not** hardcode `16:9` as the **whole board** canvas if Kie `aspect_ratio` is `3:1` (or other request aspect). Cell ≠ canvas.
+- Do **not** hand-wave grid/aspect in the fence — script prepends computed FORMAT LOCK; fill tokens from `--dry-run` / `resolve_storyboard_request`.
+- Do **not** request 2K/4K with canvas `3:1`/`1:3` — Kie forbids; script must use 1K.
 - Do **not** run Seedance with a different `aspect_ratio` than `media_aspect_ratio`.
-- Do **not** bypass the slice aspect gate — if the board does not slice into `media_aspect_ratio` cells, regenerate the board (new NNN) with a better grid/aspect.
-- Frame PNGs inherit aspect from board + slice — fix there, not in video.
+- Do **not** bypass the slice aspect/content gates — repair via re-slice or new board NNN.
+- Some pairs are impossible (e.g. cell `21:9` + M=6 → exact board `7:2` > max Kie `3:1`) — change M or cell.
+- Frame PNGs inherit aspect from board + per-cell crop — fix there, not in video.

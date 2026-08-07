@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
 """Media aspect ratio helpers — one board generation + slice, encode pixels.
 
-Storyboard and Seedance share one cell aspect from project.meta.json → media_aspect_ratio.
-Storyboard: ONE Kie gpt-image-2-text-to-image board (grid of M cells), then local slice.
-Video: seedance-2-mini.
+Pipeline (no hand-waved 16:9):
+  1) User / intake sets ``media_aspect_ratio`` = Seedance cell
+     (1:1 | 4:3 | 3:4 | 16:9 | 9:16 | 21:9)
+  2) M ∈ {3,6,9} → grid → exact board aspect = cols×cell_w : rows×cell_h
+  3) Kie board ``aspect_ratio`` + ``resolution`` chosen so the canvas can hold
+     that grid (2K/4K cannot use 3:1 / 1:3 / … → may force 1K)
+  4) Slice → frames at ``media_aspect_ratio`` (= Seedance video)
 """
 
 from __future__ import annotations
@@ -14,11 +18,34 @@ import sys
 from pathlib import Path
 from typing import Any
 
-# Seedance 2 Mini + gpt-image-2 panel aspects (shared).
+# Seedance 2 Mini video / cell aspects (shared with sliced frames).
 SUPPORTED_CELL_ASPECTS = frozenset({"16:9", "9:16", "4:3", "3:4", "1:1", "21:9"})
+# Only used when required=False (legacy); production paths require meta.
 DEFAULT_CELL_ASPECT = "16:9"
-STORYBOARD_RESOLUTIONS = frozenset({"2K", "4K"})
 
+# gpt-image-2 whitelist (1K). Docs: 2K/4K disallow 5:4, 4:5, 3:1, 1:3, 9:21.
+GPT_IMAGE_ASPECTS_1K = frozenset(
+    {
+        "1:1",
+        "3:2",
+        "2:3",
+        "4:3",
+        "3:4",
+        "5:4",
+        "4:5",
+        "16:9",
+        "9:16",
+        "2:1",
+        "1:2",
+        "3:1",
+        "1:3",
+        "21:9",
+        "9:21",
+    }
+)
+GPT_IMAGE_ASPECTS_BLOCKED_AT_2K_4K = frozenset({"5:4", "4:5", "3:1", "1:3", "9:21"})
+
+STORYBOARD_RESOLUTIONS = frozenset({"1K", "2K", "4K"})
 FRAME_COUNTS = frozenset({3, 6, 9})
 
 # (rows, cols) for the one-generation board grid (board_then_slice)
@@ -81,6 +108,7 @@ def resolve_frames_count(meta: dict[str, Any], cli_frames: int | None) -> int:
 
 
 def resolve_cell_aspect(cli_value: str | None, meta: dict[str, Any], *, required: bool = True) -> str:
+    """Seedance + sliced-frame aspect from intake (never assume a fixed ratio)."""
     raw = (
         cli_value
         or meta.get("media_aspect_ratio")
@@ -92,26 +120,20 @@ def resolve_cell_aspect(cli_value: str | None, meta: dict[str, Any], *, required
         if required:
             raise SystemExit(
                 "media_aspect_ratio not set in project.meta.json. "
-                "Ask user on intake (RU): 16:9 / 9:16 / 4:3 / 3:4 / 1:1 / 21:9 — "
-                "same for storyboard panels and Seedance video."
+                "Ask user on intake (RU) — Seedance: 1:1 / 4:3 / 3:4 / 16:9 / 9:16 / 21:9. "
+                "That value IS each storyboard frame after slice AND each video leg."
             )
         return DEFAULT_CELL_ASPECT
     if raw not in SUPPORTED_CELL_ASPECTS:
         raise SystemExit(
             f"Unsupported media_aspect_ratio {raw!r}. "
-            f"Use one of: {', '.join(sorted(SUPPORTED_CELL_ASPECTS))}"
+            f"Seedance / cell must be one of: {', '.join(sorted(SUPPORTED_CELL_ASPECTS))}"
         )
     return raw
 
 
 def board_aspect_ratio(m: int, cell_aspect: str) -> str:
-    """Pixel aspect of the one-generation board (grid of M cells).
-
-    Used to (a) pick the nearest Kie `aspect_ratio` for the single board request
-    and (b) verify the slice grid. May not exist in the Kie whitelist (e.g. `8:3`
-    for M=6, cell 16:9, grid 3×2) — then the script picks a wider whitelist ratio
-    and `slice_storyboard.py` centre-crops the excess before slicing.
-    """
+    """Exact contact-sheet aspect for M cells of ``cell_aspect`` (math, not Kie param)."""
     if m not in GRID_BY_M:
         raise ValueError(f"M must be one of {sorted(GRID_BY_M)}; got {m}")
     if cell_aspect not in SUPPORTED_CELL_ASPECTS:
@@ -130,9 +152,10 @@ def grid_cols_rows(m: int) -> tuple[int, int]:
 
 
 def resolve_storyboard_resolution(meta: dict[str, Any], cli: str | None = None) -> str:
+    """Preferred board resolution (may be overridden to 1K if aspect requires it)."""
     raw = (cli or meta.get("storyboard_resolution") or "2K").strip().upper()
     if raw not in STORYBOARD_RESOLUTIONS:
-        raise SystemExit(f"storyboard_resolution must be 2K|4K; got {raw!r}")
+        raise SystemExit(f"storyboard_resolution must be 1K|2K|4K; got {raw!r}")
     return raw
 
 
@@ -141,13 +164,20 @@ def storyboard_strategy() -> str:
     return "board_then_slice"
 
 
-def choose_request_aspect(cols: int, rows: int, cell_aspect: str, supported: set[str] | frozenset[str]) -> str:
-    """Pick the Kie whitelist aspect for the single board request.
+def kie_aspects_for_resolution(resolution: str) -> frozenset[str]:
+    """gpt-image-2 aspect whitelist for a resolution tier."""
+    res = resolution.strip().upper()
+    if res == "1K":
+        return GPT_IMAGE_ASPECTS_1K
+    if res in {"2K", "4K"}:
+        return GPT_IMAGE_ASPECTS_1K - GPT_IMAGE_ASPECTS_BLOCKED_AT_2K_4K
+    raise ValueError(f"Unknown storyboard resolution {resolution!r}")
 
-    Rule: smallest whitelist ratio with width/height >= board ratio, so the slice
-    only ever centre-crops excess width/height, never invents pixels. SystemExit
-    (via ValueError) if nothing is wide/tall enough.
-    """
+
+def choose_request_aspect(
+    cols: int, rows: int, cell_aspect: str, supported: set[str] | frozenset[str]
+) -> str:
+    """Smallest whitelist aspect with W/H >= exact grid board ratio."""
     cw, ch = parse_aspect(cell_aspect)
     target = (cols * cw) / (rows * ch)
     candidates = sorted(
@@ -157,17 +187,119 @@ def choose_request_aspect(cols: int, rows: int, cell_aspect: str, supported: set
     if not candidates:
         raise ValueError(
             f"No Kie aspect_ratio covers board grid {cols}x{rows} of {cell_aspect} cells "
-            f"(board ratio {target:.3f}). Use a larger M grid (6 or 9) or a different "
-            "media_aspect_ratio, then regenerate the board."
+            f"(board ratio {target:.3f}). Change M or media_aspect_ratio, or use 1K if "
+            f"the covering aspect is 3:1/1:3 (blocked at 2K/4K)."
         )
     return candidates[0][1]
 
 
-def gpt_image_resolution(cell_aspect: str, preferred: str = "2K") -> str:
-    """Resolution for panel generation via Kie gpt-image-2 (2K default; 4K on request)."""
+def resolve_storyboard_request(
+    *,
+    m: int,
+    cell_aspect: str,
+    preferred_resolution: str,
+) -> dict[str, Any]:
+    """Compute board request from video cell + M (single source of truth).
+
+    Returns dict with: cols, rows, cell_aspect, exact_board_aspect, request_aspect,
+    resolution, preferred_resolution, resolution_forced_1k (bool), note (str).
+    """
+    cols, rows = grid_cols_rows(m)
+    exact = board_aspect_ratio(m, cell_aspect)
+    preferred = preferred_resolution.strip().upper()
     if preferred not in STORYBOARD_RESOLUTIONS:
         preferred = "2K"
-    # gpt-image-2: 1:1 cannot use 4K
+
+    # Try preferred → 2K → 4K → 1K (1K last: only tier that allows 3:1 / 1:3).
+    try_order: list[str] = []
+    for res in (preferred, "2K", "4K", "1K"):
+        if res not in try_order and res in STORYBOARD_RESOLUTIONS:
+            try_order.append(res)
+
+    errors: list[str] = []
+    for res in try_order:
+        if res == "4K" and cell_aspect == "1:1":
+            errors.append("4K+1:1 unsupported by gpt-image-2")
+            continue
+        supported = kie_aspects_for_resolution(res)
+        try:
+            request_aspect = choose_request_aspect(cols, rows, cell_aspect, supported)
+        except ValueError as exc:
+            errors.append(f"{res}: {exc}")
+            continue
+        if request_aspect not in supported:
+            errors.append(f"{res}: picked {request_aspect} not in whitelist")
+            continue
+        forced = res == "1K" and preferred != "1K"
+        note = ""
+        if forced:
+            note = (
+                f"preferred {preferred} cannot cover exact board {exact} "
+                f"(need canvas ≥ {exact}; 2K/4K block 3:1/1:3) → using 1K + {request_aspect}"
+            )
+        return {
+            "m": m,
+            "cols": cols,
+            "rows": rows,
+            "cell_aspect": cell_aspect,
+            "exact_board_aspect": exact,
+            "request_aspect": request_aspect,
+            "resolution": res,
+            "preferred_resolution": preferred,
+            "resolution_forced_1k": forced,
+            "note": note,
+        }
+
+    raise SystemExit(
+        "Cannot resolve storyboard Kie aspect+resolution for "
+        f"M={m} cell={cell_aspect} exact_board={exact} preferred={preferred}. "
+        f"Tried: {try_order}. Errors: {' | '.join(errors)}"
+    )
+
+
+def build_storyboard_format_lock(
+    *,
+    m: int,
+    cols: int,
+    rows: int,
+    cell_aspect: str,
+    request_aspect: str,
+    resolution: str | None = None,
+) -> str:
+    """Machine-computed FORMAT LOCK prepended to the Kie storyboard prompt."""
+    exact = board_aspect_ratio(m, cell_aspect)
+    exact_f = aspect_to_float(exact)
+    req_f = aspect_to_float(request_aspect)
+    res_line = f"- Kie createTask resolution: {resolution}\n" if resolution else ""
+    wider_note = ""
+    if abs(req_f - exact_f) / exact_f > 0.02:
+        wider_note = (
+            f"- NOTE: API canvas {request_aspect} differs from exact grid {exact}; "
+            f"fill the full {request_aspect} canvas with an equal {cols}×{rows} contact sheet "
+            f"(thin white gutters). Local slice = equal-grid on full board, then each cell "
+            f"centre-cropped to {cell_aspect}. Do NOT invent a {rows}×{cols} flipped layout.\n"
+        )
+    return (
+        "FORMAT LOCK (COMPUTED — BINDING; do not contradict):\n"
+        f"- Kie createTask aspect_ratio (WHOLE IMAGE canvas): {request_aspect}\n"
+        f"{res_line}"
+        f"- Exact math for {cols} COLUMNS × {rows} ROWS of {cell_aspect} cells: {exact} "
+        f"(ratio {exact_f:.4f})\n"
+        f"- Grid: {cols} COLUMNS × {rows} ROWS = {m} panels. Order L→R, then T→B "
+        f"(top row 1…{cols}, next rows continue). FORBIDDEN: {rows}×{cols} flip, "
+        f"portrait stack, 1×{m}, {m}×1.\n"
+        f"- EACH panel/cell (after local slice) = {cell_aspect} — SAME as Seedance video "
+        f"media_aspect_ratio. {cell_aspect} is NOT the whole-image canvas.\n"
+        f"{wider_note}"
+        f"- Equal thin white gutters between panels. Continuity across the sheet.\n"
+    )
+
+
+def gpt_image_resolution(cell_aspect: str, preferred: str = "2K") -> str:
+    """Legacy helper — prefer ``resolve_storyboard_request`` in new code."""
+    preferred = (preferred or "2K").strip().upper()
+    if preferred not in STORYBOARD_RESOLUTIONS:
+        preferred = "2K"
     if preferred == "4K" and cell_aspect == "1:1":
         return "2K"
     return preferred
@@ -192,12 +324,7 @@ def validate_board_pixels_for_grid(
     min_vs_grid_tol: float = 0.05,
     request_tol: float = 0.12,
 ) -> None:
-    """Hard-fail if downloaded board cannot be a valid contact sheet for this grid.
-
-    Kie sometimes ignores ``aspect_ratio`` (e.g. returns 2:1 when asked 3:1) and
-    paints a flipped 2×3 sheet. Slicing that as 3×2 produces garbage cells.
-    Refuse before centre-crop / equal-grid slice.
-    """
+    """Hard-fail if downloaded board cannot be a valid contact sheet for this grid."""
     if width <= 0 or height <= 0:
         raise SystemExit(f"Invalid board size {width}x{height}")
     actual = width / height

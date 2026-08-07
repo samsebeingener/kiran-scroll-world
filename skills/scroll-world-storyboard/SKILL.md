@@ -27,8 +27,10 @@ description: One Kie gpt-image-2 board generation (grid of M panels) + local sli
 
 1. Следующий `{NNN}` через `asset_versions.py next … *-board.png`
 2. Файл: `05-image-prompts/{NNN}-storyboard.md` — заполни `templates/storyboard-prompt.template.md`:
-   - **В Kie уходит ТОЛЬКО блок ```text```** (скрипт вырезает fence). Снаружи fence: slug / M / grid / mode / заметки — **не** в createTask.
-   - {{M}}, {{COLS}}×{{ROWS}} grid, {{CELL_ASPECT}} = `media_aspect_ratio` (не хардкодить 16:9)
+   - **В Kie:** скрипт вырезает ` ```text ` и **дописывает computed FORMAT LOCK** из `resolve_storyboard_request` (cell=`media_aspect_ratio`, exact board, Kie canvas+resolution). Cell ≠ canvas. 2K/4K не умеют 3:1 → авто 1K.
+   - Снаружи fence: slug / journey notes — **не** в createTask.
+   - Токены `{{M}}` `{{COLS}}` `{{ROWS}}` `{{CELL_ASPECT}}` `{{REQUEST_ASPECT}}` `{{EXACT_BOARD_ASPECT}}` `{{RESOLUTION}}` — только из meta + `--dry-run` (**запрещён хардкод** любого одного aspect как «единственного»).
+   - {{CELL_ASPECT}} = `media_aspect_ratio` (= Seedance); не описывать весь board как cell.
    - ONE CONTINUOUS WORLD / same flight path через весь board
    - beat / camera / continuity landmark / from-prev для каждой панели
    - transition intent из Transition plan

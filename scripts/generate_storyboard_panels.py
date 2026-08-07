@@ -29,13 +29,12 @@ from asset_versions import format_version, next_version, register_storyboard
 from kie_common import KieTaskClient, extract_kie_prompt_from_markdown
 from kie_file_upload import KieFileUploadClient
 from media_format import (
-    board_aspect_ratio,
-    choose_request_aspect,
-    grid_cols_rows,
-    gpt_image_resolution,
+    GPT_IMAGE_ASPECTS_1K,
+    build_storyboard_format_lock,
     load_project_meta,
     resolve_cell_aspect,
     resolve_frames_count,
+    resolve_storyboard_request,
     resolve_storyboard_resolution,
     storyboard_strategy,
     validate_board_pixels_for_grid,
@@ -45,23 +44,8 @@ from slice_storyboard import slice_board
 MODEL_T2I = "gpt-image-2-text-to-image"
 MODEL_I2I = "gpt-image-2-image-to-image"
 MAX_REFERENCES = 8
-SUPPORTED = frozenset(
-    {
-        "1:1",
-        "3:2",
-        "2:3",
-        "4:3",
-        "3:4",
-        "16:9",
-        "9:16",
-        "2:1",
-        "1:2",
-        "3:1",
-        "1:3",
-        "21:9",
-        "9:21",
-    }
-)
+SUPPORTED = GPT_IMAGE_ASPECTS_1K  # full 1K set; 2K/4K filtered inside resolve_storyboard_request
+SUPPORTED_RESOLUTIONS = frozenset({"1K", "2K", "4K"})
 
 
 class GptImage2Client(KieTaskClient):
@@ -75,13 +59,17 @@ class GptImage2Client(KieTaskClient):
     ) -> str:
         if aspect_ratio not in SUPPORTED:
             raise ValueError(f"Unsupported aspect_ratio {aspect_ratio!r}")
-        if aspect_ratio == "1:1" and resolution == "4K":
+        res = resolution.strip().upper()
+        if res not in SUPPORTED_RESOLUTIONS:
+            raise ValueError(f"Unsupported resolution {resolution!r} (use 1K|2K|4K)")
+        if aspect_ratio == "1:1" and res == "4K":
             raise ValueError("1:1 cannot use 4K")
+        # 2K/4K cannot use 3:1 / 1:3 / 5:4 / 4:5 / 9:21 — resolve_storyboard_request enforces this
         model = MODEL_I2I if image_urls else MODEL_T2I
         input_payload: dict[str, Any] = {
             "prompt": prompt,
             "aspect_ratio": aspect_ratio,
-            "resolution": resolution,
+            "resolution": res,
         }
         # gpt-image-2-image-to-image: reference image urls as image input
         # (endpoint/payload per Kie docs for gpt-image-2-image-to-image).
@@ -124,7 +112,11 @@ def main() -> None:
     parser.add_argument("--project", required=True, type=Path)
     parser.add_argument("--prompt-file", required=True, type=Path)
     parser.add_argument("--frames", type=int, default=None)
-    parser.add_argument("--resolution", default=None, help="2K (default) or 4K")
+    parser.add_argument(
+        "--resolution",
+        default=None,
+        help="Preferred board resolution: 1K|2K|4K (may auto-fallback to 1K if aspect needs 3:1)",
+    )
     parser.add_argument("--workspace", type=Path, default=None)
     parser.add_argument("--version", type=int, default=None, help="Force NNN version")
     parser.add_argument(
@@ -143,21 +135,24 @@ def main() -> None:
     project = args.project.resolve()
     meta = load_project_meta(project)
     m = resolve_frames_count(meta, args.frames)
-    cell_aspect = resolve_cell_aspect(None, meta)
+    cell_aspect = resolve_cell_aspect(None, meta)  # = Seedance / sliced frames
     preferred = resolve_storyboard_resolution(meta, args.resolution)
-    resolution = gpt_image_resolution(cell_aspect, preferred)
     strategy = storyboard_strategy()
     if strategy != "board_then_slice":
         raise SystemExit(f"Unexpected strategy {strategy!r}")
 
-    cols, rows = grid_cols_rows(m)
-    board_ratio = board_aspect_ratio(m, cell_aspect)
-    try:
-        request_aspect = choose_request_aspect(cols, rows, cell_aspect, SUPPORTED)
-    except ValueError as exc:
-        raise SystemExit(str(exc)) from exc
-    if request_aspect == "1:1" and resolution == "4K":
-        resolution = "2K"
+    plan = resolve_storyboard_request(
+        m=m,
+        cell_aspect=cell_aspect,
+        preferred_resolution=preferred,
+    )
+    cols = int(plan["cols"])
+    rows = int(plan["rows"])
+    board_ratio = str(plan["exact_board_aspect"])
+    request_aspect = str(plan["request_aspect"])
+    resolution = str(plan["resolution"])
+    if plan.get("note"):
+        print(f"WARN: {plan['note']}", flush=True)
 
     prompt_arg = Path(args.prompt_file)
     if prompt_arg.is_file():
@@ -168,12 +163,33 @@ def main() -> None:
         raise SystemExit(f"Prompt file not found: {args.prompt_file}")
     raw_prompt = prompt_path.read_text(encoding="utf-8-sig")
     # Kie gets ONLY the ```text fence — never slug / M / grid / workaround notes.
-    prompt = extract_kie_prompt_from_markdown(
+    body = extract_kie_prompt_from_markdown(
         raw_prompt,
         require_text_fence=True,
         source=prompt_path,
     )
-    print(f"prompt_chars={len(prompt)} (extracted from ```text fence)", flush=True)
+    # Prepend machine-computed FORMAT LOCK (cell ≠ canvas; from meta math).
+    format_lock = build_storyboard_format_lock(
+        m=m,
+        cols=cols,
+        rows=rows,
+        cell_aspect=cell_aspect,
+        request_aspect=request_aspect,
+        resolution=resolution,
+    )
+    if body.upper().startswith("FORMAT LOCK"):
+        prompt = format_lock + "\n" + body
+    else:
+        prompt = format_lock + "\n" + body
+    print(
+        f"format_pipeline cell={cell_aspect}(=video) M={m} grid={cols}x{rows} "
+        f"exact_board={board_ratio} -> Kie aspect={request_aspect} res={resolution}",
+        flush=True,
+    )
+    print(
+        f"prompt_chars={len(prompt)} (format_lock={len(format_lock)} + fence={len(body)})",
+        flush=True,
+    )
 
     sb_dir = project / "assets" / "storyboard"
     sb_dir.mkdir(parents=True, exist_ok=True)

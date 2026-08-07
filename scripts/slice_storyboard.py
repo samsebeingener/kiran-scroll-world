@@ -1,13 +1,17 @@
 #!/usr/bin/env python3
-"""Board→frames slicer with centre-crop + hard aspect gate (production path).
+"""Board→frames slicer with per-cell aspect crop + hard QA gates.
 
 The board comes from ONE Kie generation (generate_storyboard_panels.py). Before
-any crop/slice, ``validate_board_pixels_for_grid`` refuses boards whose pixel AR
-is too narrow for the contact sheet (e.g. Kie returned 2:1 when 3:1 / 3×2 was
-required). If the requested Kie aspect is wider than the exact grid aspect, the
-excess is centre-cropped before the equal-grid slice. Each cell must then match
-media_aspect_ratio (aspect_close) or the script exits — repair via a new board
-generation with a better grid/aspect, not by weakening the gate.
+slice, ``validate_board_pixels_for_grid`` refuses boards whose pixel AR is too
+narrow for the contact sheet (e.g. Kie returned 2:1 when 3:1 / 3×2 was required).
+
+When Kie returns a wider canvas than the exact grid (e.g. 3:1 for an 8:3
+3×2×16:9 sheet), we do **NOT** centre-crop the whole board first — that shifts
+panel gutters and bleeds adjacent panels into cells. Instead: equal-grid slice
+on the **full** board, then centre-crop **each cell** to ``media_aspect_ratio``.
+
+Each cell must pass aspect_close + content QA or the script exits before
+updating active_map.
 """
 
 from __future__ import annotations
@@ -24,10 +28,11 @@ from asset_versions import (
 )
 from media_format import (
     aspect_close,
-    choose_request_aspect,
     load_project_meta,
     parse_aspect,
     resolve_cell_aspect,
+    resolve_storyboard_request,
+    resolve_storyboard_resolution,
     validate_board_pixels_for_grid,
 )
 
@@ -46,6 +51,26 @@ _EDGE_STRIP_FRAC = 0.15
 _EDGE_MASS_FAIL = 0.75
 _BLANK_STD = 20.0
 _BLANK_MEAN = 240.0
+_SEAM_SCAN_FRAC = 0.30
+_SEAM_WHITE = 230.0
+_SEAM_DARK = 160.0
+
+
+def _crop_to_aspect(image: Image.Image, target_aspect: str) -> Image.Image:
+    """Centre-crop a single image (board or cell) to target W:H."""
+    tw, th = parse_aspect(target_aspect)
+    target = tw / th
+    w, h = image.size
+    current = w / h
+    if abs(current - target) / target <= 1e-3:
+        return image
+    if current > target:  # too wide — trim left/right
+        new_w = round(h * target)
+        left = (w - new_w) // 2
+        return image.crop((left, 0, left + new_w, h))
+    new_h = round(w / target)  # too tall — trim top/bottom
+    upper = (h - new_h) // 2
+    return image.crop((0, upper, w, upper + new_h))
 
 
 def _luma_stats(cell: Image.Image) -> dict[str, float]:
@@ -59,6 +84,7 @@ def _luma_stats(cell: Image.Image) -> dict[str, float]:
             "mean": 255.0,
             "std": 0.0,
             "edge_max": 1.0,
+            "seam": 0.0,
         }
     pixels = list(gray.getdata())
     n = len(pixels)
@@ -72,7 +98,7 @@ def _luma_stats(cell: Image.Image) -> dict[str, float]:
 
     strip_w = max(1, int(w * _EDGE_STRIP_FRAC))
     strip_h = max(1, int(h * _EDGE_STRIP_FRAC))
-    # Row-major flat index: y * w + x
+
     def edge_dark_frac(xs: range, ys: range) -> float:
         if dark_n == 0:
             return 0.0
@@ -88,12 +114,27 @@ def _luma_stats(cell: Image.Image) -> dict[str, float]:
     right = edge_dark_frac(range(w - strip_w, w), range(h))
     top = edge_dark_frac(range(w), range(0, strip_h))
     bottom = edge_dark_frac(range(w), range(h - strip_h, h))
+
+    # Vertical seam near left: dark fragment | white gutter | rest of panel
+    scan = max(8, int(w * _SEAM_SCAN_FRAC))
+    col_means = [
+        sum(pixels[y * w + x] for y in range(h)) / h for x in range(scan)
+    ]
+    seam = 0.0
+    for i in range(2, len(col_means) - 2):
+        if col_means[i] >= _SEAM_WHITE and any(
+            m <= _SEAM_DARK for m in col_means[:i]
+        ):
+            seam = 1.0
+            break
+
     return {
         "dark_ratio": dark_ratio,
         "white_ratio": white_ratio,
         "mean": mean,
         "std": std,
         "edge_max": max(left, right, top, bottom),
+        "seam": seam,
     }
 
 
@@ -111,18 +152,22 @@ def cell_content_issues(cell: Image.Image, cell_idx: int) -> list[str]:
             f"cell {cell_idx}: almost no subject "
             f"(dark_ratio={s['dark_ratio']:.3f} < {_MIN_DARK_RATIO})"
         )
-    # Sparse subject glued to one edge → classic wrong-grid / half-cut slice
     if s["dark_ratio"] < _SPARSE_DARK_RATIO and s["edge_max"] >= _EDGE_MASS_FAIL:
         issues.append(
             f"cell {cell_idx}: subject glued to one edge "
             f"(dark_ratio={s['dark_ratio']:.3f}, edge_mass={s['edge_max']:.2f}) "
             f"— likely bad grid slice / cut-off panel"
         )
+    if s["seam"] >= 1.0:
+        issues.append(
+            f"cell {cell_idx}: vertical seam/gutter bleed on left "
+            f"(adjacent-panel fragment) — wrong equal-grid cut"
+        )
     return issues
 
 
 def validate_sliced_cells_content(cells: list[tuple[int, Image.Image]]) -> None:
-    """Hard-fail if any sliced cell looks empty or half-cut."""
+    """Hard-fail if any sliced cell looks empty, half-cut, or seam-bled."""
     issues: list[str] = []
     for idx, im in cells:
         issues.extend(cell_content_issues(im, idx))
@@ -131,7 +176,8 @@ def validate_sliced_cells_content(cells: list[tuple[int, Image.Image]]) -> None:
         raise SystemExit(
             f"SLICE CONTENT GATE: {joined}. "
             "Do not trust these frames — regenerate the board "
-            "(generate_storyboard_panels.py) after fixing prompt/aspect."
+            "(generate_storyboard_panels.py) after fixing prompt/aspect, "
+            "or re-slice with the per-cell crop path."
         )
 
 
@@ -165,23 +211,6 @@ def resolve_board(project: Path, board_version: int | None, explicit: Path | Non
     return path, v
 
 
-def _crop_to_grid_aspect(image: Image.Image, cols: int, rows: int, cell_aspect: str) -> Image.Image:
-    """Centre-crop board to the exact grid aspect (cols*cw : rows*ch)."""
-    cw, ch = parse_aspect(cell_aspect)
-    target = (cols * cw) / (rows * ch)
-    w, h = image.size
-    current = w / h
-    if abs(current - target) / target <= 1e-3:
-        return image
-    if current > target:  # too wide — trim left/right
-        new_w = round(h * target)
-        left = (w - new_w) // 2
-        return image.crop((left, 0, left + new_w, h))
-    new_h = round(w / target)  # too tall — trim top/bottom
-    upper = (h - new_h) // 2
-    return image.crop((0, upper, w, upper + new_h))
-
-
 def slice_board(
     project: Path,
     board: Path,
@@ -204,28 +233,13 @@ def slice_board(
     out_dir.mkdir(parents=True, exist_ok=True)
 
     image = Image.open(board).convert("RGB")
-    # Refuse wrong Kie output BEFORE centre-crop (crop cannot fix a flipped grid).
-    supported = frozenset(
-        {
-            "1:1",
-            "3:2",
-            "2:3",
-            "4:3",
-            "3:4",
-            "16:9",
-            "9:16",
-            "2:1",
-            "1:2",
-            "3:1",
-            "1:3",
-            "21:9",
-            "9:21",
-        }
+    preferred = resolve_storyboard_resolution(meta, None)
+    plan = resolve_storyboard_request(
+        m=frames,
+        cell_aspect=cell_aspect,
+        preferred_resolution=preferred,
     )
-    try:
-        request_aspect = choose_request_aspect(cols, rows, cell_aspect, supported)
-    except ValueError:
-        request_aspect = None
+    request_aspect = str(plan["request_aspect"])
     bw, bh = image.size
     validate_board_pixels_for_grid(
         bw,
@@ -235,12 +249,20 @@ def slice_board(
         cell_aspect=cell_aspect,
         request_aspect=request_aspect,
     )
+    cw_u, ch_u = parse_aspect(cell_aspect)
+    grid_ar = (cols * cw_u) / (rows * ch_u)
+    board_ar = bw / bh
     print(
-        f"board_ok size={bw}x{bh} ar={bw / bh:.4f} "
-        f"grid={cols}x{rows} cell={cell_aspect} request_aspect={request_aspect}",
+        f"board_ok size={bw}x{bh} ar={board_ar:.4f} grid_ar={grid_ar:.4f} "
+        f"grid={cols}x{rows} cell={cell_aspect}(=video) "
+        f"exact={plan['exact_board_aspect']} request_aspect={request_aspect} "
+        f"kie_res={plan['resolution']} slice=equal_grid+per_cell_crop",
         flush=True,
     )
-    image = _crop_to_grid_aspect(image, cols, rows, cell_aspect)
+
+    # Equal grid on the FULL board (preserve panel gutters). Then crop each cell
+    # to media_aspect_ratio. Never board-level centre-crop to grid_ar — that
+    # shifts columns and bleeds adjacent panels (classic left-sliver on last cell).
     width, height = image.size
     cell_w = width // cols
     cell_h = height // rows
@@ -248,7 +270,6 @@ def slice_board(
 
     selected = cells if cells is not None else set(range(1, frames + 1))
 
-    # Crop all selected cells first → content QA → then write (no half-bad active_map).
     pending: list[tuple[int, Image.Image]] = []
     for i in range(frames):
         cell_idx = i + 1
@@ -260,7 +281,8 @@ def slice_board(
         upper = row * cell_h + gutter
         right = (col + 1) * cell_w - gutter
         lower = (row + 1) * cell_h - gutter
-        cell = image.crop((left, upper, right, lower))
+        raw_cell = image.crop((left, upper, right, lower))
+        cell = _crop_to_aspect(raw_cell, cell_aspect)
         cw, ch = cell.size
         if not aspect_close(cw, ch, cell_aspect):
             raise SystemExit(
@@ -279,7 +301,8 @@ def slice_board(
         s = _luma_stats(cell)
         print(
             f"cell_{cell_idx:02d}_qa dark={s['dark_ratio']:.3f} "
-            f"white={s['white_ratio']:.3f} edge_max={s['edge_max']:.2f}",
+            f"white={s['white_ratio']:.3f} edge_max={s['edge_max']:.2f} "
+            f"seam={s['seam']:.0f}",
             flush=True,
         )
 
@@ -297,7 +320,7 @@ def slice_board(
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Slice one-generation board into frames (hard aspect gate)"
+        description="Slice one-generation board into frames (per-cell crop + QA)"
     )
     parser.add_argument("--project", required=True, type=Path)
     parser.add_argument("--frames", type=int, choices=[3, 6, 9], required=True)
